@@ -6,9 +6,8 @@ import os
 import h5py
 #import theano
 #import theano.sandbox.cuda.dnn
-import cv2
 import scipy.misc
-
+from mean_iou_evaluate import read_masks, mean_iou_score
 from keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose, Activation
 from keras.models import Model, load_model
 from keras.objectives import *
@@ -17,8 +16,8 @@ import keras.backend as K
 import tensorflow as tf
 
 n_epochs = 1
-train_size = 10#2312
-valid_size = 10#256
+train_size = 10 #2313
+valid_size = 257
 load = 0
 
 def read_image(data_size, folder):
@@ -95,12 +94,12 @@ def training(model, X_train_, Y_train):
     model.fit(X_train, Y_train, 
           batch_size=1, epochs=n_epochs, verbose=1)
     model.save('my_model.h5')
-    return model
-    
+    del model 
+
 def validation(model, X_valid, Y_valid):
     #score = model.evaluate(X_test, Y_test, verbose=0)
     output = model.predict(X_valid, batch_size=None, verbose=0, steps=None)
-    for n in range(1):#output.shape[0]):
+    for n in range(output.shape[0]):
         output_image = np.zeros((512, 512, 3))
         label = np.argmax(output[n], axis=2)
         for i in range(512):
@@ -120,9 +119,12 @@ def validation(model, X_valid, Y_valid):
                     output_image[i, j] = [255, 255, 255]
                 elif ans == 6:
                     output_image[i, j] = [0, 0, 0]
-        cv2.imshow("output ", output_image.astype(np.uint8))
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+        index = str(n).zfill(4)
+        folder = './output'
+        file_path = folder + '/' + index + '_mask.png'
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+        scipy.misc.imsave(file_path, output_image)
 
 def softmax_sparse_crossentropy_ignoring_last_label(y_true, y_pred):
     y_pred = K.reshape(y_pred, (-1, K.int_shape(y_pred)[-1]))
@@ -137,13 +139,23 @@ def softmax_sparse_crossentropy_ignoring_last_label(y_true, y_pred):
 
     return cross_entropy_mean
 
+def evaluation(ground_truth_folder, predict_folder):
+    pred = read_masks(ground_truth_folder)
+    labels = read_masks(predict_folder)
+    score = mean_iou_score(pred, labels)
+    print("mean iou score: " , score)
+
 if __name__ == '__main__':
-    (X_train, Y_train) = read_image(train_size, './hw3-train-validation/train/')
-    (X_valid, Y_valid) = read_image(valid_size, './hw3-train-validation/validation/')
+    train_folder = './hw3-train-validation/train/'
+    ground_truth_folder = './hw3-train-validation/validation/'
+    predict_folder = './output/'
+    (X_train, Y_train) = read_image(train_size, train_folder)
+    (X_valid, Y_valid) = read_image(valid_size, ground_truth_folder)
     if load == 1:
         model = load_model('my_model.h5')
     else:
         model = construct_model()
-        model = training(model, X_train, Y_train)
+        training(model, X_train, Y_train)
         model = load_model('my_model.h5')
     validation(model, X_valid, Y_valid)
+    evaluation(ground_truth_folder, predict_folder)
