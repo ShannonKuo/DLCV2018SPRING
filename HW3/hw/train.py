@@ -17,7 +17,7 @@ import tensorflow as tf
 
 n_epochs = 3
 train_size = 1#2313
-valid_size = 257
+valid_size = 10
 load = 0
 model_name = 'my_model2.h5'
 
@@ -100,8 +100,8 @@ def training(model, X_train_, Y_train, X_valid, Y_valid):
 
 def validation(model, X_valid, Y_valid):
     print("validation")
-    output = model.predict(X_valid, batch_size=32, verbose=0, steps=None)
-    """print(output.shape)
+    output = model.predict(X_valid, batch_size=1, verbose=0, steps=None)
+    print(output.shape)
     labels = np.zeros((output.shape[0], 512, 512, 3))
     for n in range(output.shape[0]):
         output_image = np.zeros((512, 512, 3))
@@ -131,7 +131,7 @@ def validation(model, X_valid, Y_valid):
             os.makedirs(folder)
         scipy.misc.imsave(file_path, output_image)
     return labels
-    """
+
 class Metrics(Callback):
     def __init__(self, labels, x, y):
         self.labels = labels
@@ -139,7 +139,7 @@ class Metrics(Callback):
         self.y = y
     def on_epoch_end(self, epoch, logs={}):
         pred = validation(model, self.x, self.y)
-        score = mean_iou_score(pred, self.labels)
+        score = mean_iou_score(self.labels, self.labels)
         return
 
 def evaluation(ground_truth_folder, predict_folder):
@@ -164,7 +164,7 @@ if __name__ == '__main__':
     else:
         model = construct_model()
         training(model, X_train, Y_train, X_valid, Y_valid)
-        model = load_model(model_name)
+        #model = load_model(model_name)
         #labels = validation(model, X_valid, Y_valid)
         #evaluation(ground_truth_folder, predict_folder)
         #evaluation_with_label(Y_train, labels)
