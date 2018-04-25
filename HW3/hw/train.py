@@ -16,8 +16,8 @@ import keras.backend as K
 import tensorflow as tf
 
 n_epochs = 3
-train_size = 1#2313
-valid_size = 10
+train_size = 2313
+valid_size = 257
 load = 0
 model_name = 'my_model2.h5'
 
@@ -88,25 +88,25 @@ def construct_model():
     model.load_weights(weights_path, by_name=True)
     return model
 
-def training(model, X_train_, Y_train, X_valid, Y_valid):
-    metrics = Metrics(Y_train, X_valid, Y_valid)
-
-    model.compile(loss=binary_crossentropy,
-              optimizer='adam',
+def training(model, X_train_, Y_train, X_valid):
+    metrics = Metrics(X_valid)
+    keras.optimizers.Adadelta(lr = 1.0, rho = 0.95, epsilon = 1e-06)
+    model.compile(loss='categorical_crossentropy',
+              optimizer='Adadelta',
               metrics=['accuracy'])
     model.fit(X_train, Y_train, 
-          batch_size=4, epochs=n_epochs, verbose=1,callbacks=[metrics])
-    model.save(model_name)
+          batch_size=4, epochs=n_epochs, verbose=1, callbacks=[metrics])
+    return model
 
-def validation(model, X_valid, Y_valid):
+def validation(model, X_valid):
     print("validation")
     output = model.predict(X_valid, batch_size=1, verbose=0, steps=None)
     print(output.shape)
-    labels = np.zeros((output.shape[0], 512, 512, 3))
+    #labels = np.zeros((output.shape[0], 512, 512))
     for n in range(output.shape[0]):
         output_image = np.zeros((512, 512, 3))
         label = np.argmax(output[n], axis=2)
-        labels[n] = label
+        #labels[n] = label
         for i in range(512):
             for j in range(512):
                 ans = label[i, j]
@@ -130,17 +130,17 @@ def validation(model, X_valid, Y_valid):
         if not os.path.exists(folder):
             os.makedirs(folder)
         scipy.misc.imsave(file_path, output_image)
-    return labels
 
 class Metrics(Callback):
-    def __init__(self, labels, x, y):
-        self.labels = labels
+    def __init__(self, x):
         self.x = x
-        self.y = y
     def on_epoch_end(self, epoch, logs={}):
-        pred = validation(model, self.x, self.y)
-        score = mean_iou_score(self.labels, self.labels)
-        return
+        validation(model, self.x)
+        pred = read_masks(ground_truth_folder)
+        labels = read_masks(predict_folder)
+        score = mean_iou_score(pred, labels)
+        #pred = validation(model, self.x, self.y)
+        #score = mean_iou_score(pred, self.labels)
 
 def evaluation(ground_truth_folder, predict_folder):
     pred = read_masks(ground_truth_folder)
@@ -159,11 +159,12 @@ if __name__ == '__main__':
     (X_valid, Y_valid) = read_image(valid_size, ground_truth_folder)
     if load == 1:
         model = load_model(model_name)
-        validation(model, X_valid, Y_valid)
+        validation(model, X_valid)
         evaluation(ground_truth_folder, predict_folder)
     else:
         model = construct_model()
-        training(model, X_train, Y_train, X_valid, Y_valid)
+        model = training(model, X_train, Y_train, X_valid)
+        model.save(model_name)
         #model = load_model(model_name)
         #labels = validation(model, X_valid, Y_valid)
         #evaluation(ground_truth_folder, predict_folder)
