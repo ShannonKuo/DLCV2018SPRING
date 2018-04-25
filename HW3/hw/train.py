@@ -6,18 +6,22 @@ import os
 import h5py
 #import theano
 #import theano.sandbox.cuda.dnn
-#import cv2
+import cv2
 import scipy.misc
 
-from keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose
-from keras.models import Model
+from keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose, Activation
+from keras.models import Model, load_model
+from keras.objectives import *
+from keras.metrics import binary_crossentropy
+import keras.backend as K
+import tensorflow as tf
 
+n_epochs = 1
 train_size = 10#2312
 valid_size = 10#256
+load = 0
 
 def read_image(data_size, folder):
-    #x = np.zeros((data_size, 3, 512, 512))
-    #y = np.zeros((data_size, 7, 512, 512))
     x = np.zeros((data_size, 512, 512, 3))
     y = np.zeros((data_size, 512, 512, 7))
     
@@ -25,7 +29,6 @@ def read_image(data_size, folder):
         index = str(i).zfill(4)
         file_path = folder + index + '_sat.jpg'
         img = scipy.misc.imread(file_path)
-        #img = np.reshape(img, (3, 512, 512))
         x[i] = img
 
     x = x.astype('float32')
@@ -76,7 +79,9 @@ def construct_model():
     x = Conv2D(4096, (7, 7), activation='relu', padding='same', name='block6_conv1')(x)
     x = Conv2D(4096, (1, 1), activation='relu', padding='same', name='block6_conv2')(x)
     x = Conv2D(7, (1, 1), activation='relu', padding='same', name='block6_conv3')(x)
-    x = Conv2DTranspose(7 , kernel_size=(32,32) ,  strides=(32,32) , use_bias=False ,  data_format='channels_last')(x)
+    x = Conv2DTranspose(7 , kernel_size=(64,64) ,  strides=(32,32) , 
+                        padding='same', use_bias=False ,  data_format='channels_last')(x)
+    x = Activation('softmax')(x)
 
     model = Model(img_input, x)
     weights_path = 'vgg16_weights_tf_dim_ordering_tf_kernels.h5'
@@ -84,18 +89,61 @@ def construct_model():
     return model
 
 def training(model, X_train_, Y_train):
-    model.compile(loss='categorical_crossentropy',
+    model.compile(loss=binary_crossentropy,
               optimizer='adam',
               metrics=['accuracy'])
     model.fit(X_train, Y_train, 
-          batch_size=32, epochs=10, verbose=1)
-
+          batch_size=1, epochs=n_epochs, verbose=1)
+    model.save('my_model.h5')
+    return model
+    
 def validation(model, X_valid, Y_valid):
-    score = model.evaluate(X_test, Y_test, verbose=0)
+    #score = model.evaluate(X_test, Y_test, verbose=0)
+    output = model.predict(X_valid, batch_size=None, verbose=0, steps=None)
+    for n in range(1):#output.shape[0]):
+        output_image = np.zeros((512, 512, 3))
+        label = np.argmax(output[n], axis=2)
+        for i in range(512):
+            for j in range(512):
+                ans = label[i, j]
+                if ans == 0:
+                    output_image[i, j] = [0, 255, 255]
+                elif ans == 1:
+                    output_image[i, j] = [255, 255, 0]
+                elif ans == 2:
+                    output_image[i, j] = [255, 0, 255]
+                elif ans == 3:
+                    output_image[i, j] = [255, 0, 255]
+                elif ans == 4:
+                    output_image[i, j] = [0, 0, 255]
+                elif ans == 5:
+                    output_image[i, j] = [255, 255, 255]
+                elif ans == 6:
+                    output_image[i, j] = [0, 0, 0]
+        cv2.imshow("output ", output_image.astype(np.uint8))
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
+def softmax_sparse_crossentropy_ignoring_last_label(y_true, y_pred):
+    y_pred = K.reshape(y_pred, (-1, K.int_shape(y_pred)[-1]))
+    log_softmax = tf.nn.log_softmax(y_pred)
+
+    y_true = K.one_hot(tf.to_int32(K.flatten(y_true)), K.int_shape(y_pred)[-1]+1)
+    unpacked = tf.unstack(y_true, axis=-1)
+    y_true = tf.stack(unpacked[:-1], axis=-1)
+
+    cross_entropy = -K.sum(y_true * log_softmax, axis=1)
+    cross_entropy_mean = K.mean(cross_entropy)
+
+    return cross_entropy_mean
 
 if __name__ == '__main__':
     (X_train, Y_train) = read_image(train_size, './hw3-train-validation/train/')
     (X_valid, Y_valid) = read_image(valid_size, './hw3-train-validation/validation/')
-    model = construct_model()
-    training(model, X_train, Y_train)
+    if load == 1:
+        model = load_model('my_model.h5')
+    else:
+        model = construct_model()
+        model = training(model, X_train, Y_train)
+        model = load_model('my_model.h5')
     validation(model, X_valid, Y_valid)
