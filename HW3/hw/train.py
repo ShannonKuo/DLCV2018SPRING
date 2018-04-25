@@ -10,10 +10,12 @@ from keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose, Activatio
 from keras.models import Model, load_model
 from keras.objectives import *
 from keras.metrics import binary_crossentropy
+from keras.callbacks import Callback
+
 import keras.backend as K
 import tensorflow as tf
 
-n_epochs = 1
+n_epochs = 3
 train_size = 1#2313
 valid_size = 257
 load = 0
@@ -86,18 +88,21 @@ def construct_model():
     model.load_weights(weights_path, by_name=True)
     return model
 
-def training(model, X_train_, Y_train):
+def training(model, X_train_, Y_train, X_valid, Y_valid):
+    metrics = Metrics(Y_train, X_valid, Y_valid)
+
     model.compile(loss=binary_crossentropy,
               optimizer='adam',
               metrics=['accuracy'])
     model.fit(X_train, Y_train, 
-          batch_size=4, epochs=1, verbose=1)
+          batch_size=4, epochs=n_epochs, verbose=1,callbacks=[metrics])
     model.save(model_name)
 
 def validation(model, X_valid, Y_valid):
-    output = model.predict(X_valid, batch_size=32, verbose=0, steps=None)
-    labels = np.zeros((output.shape[0], 512, 512, 3))
     print("validation")
+    output = model.predict(X_valid, batch_size=32, verbose=0, steps=None)
+    """print(output.shape)
+    labels = np.zeros((output.shape[0], 512, 512, 3))
     for n in range(output.shape[0]):
         output_image = np.zeros((512, 512, 3))
         label = np.argmax(output[n], axis=2)
@@ -125,14 +130,27 @@ def validation(model, X_valid, Y_valid):
         if not os.path.exists(folder):
             os.makedirs(folder)
         scipy.misc.imsave(file_path, output_image)
+    return labels
+    """
+class Metrics(Callback):
+    def __init__(self, labels, x, y):
+        self.labels = labels
+        self.x = x
+        self.y = y
+    def on_epoch_end(self, epoch, logs={}):
+        pred = validation(model, self.x, self.y)
+        score = mean_iou_score(pred, self.labels)
+        return
 
 def evaluation(ground_truth_folder, predict_folder):
     pred = read_masks(ground_truth_folder)
     labels = read_masks(predict_folder)
     score = mean_iou_score(pred, labels)
+    return
+
 def evaluation_with_label(pred, labels):
     score = mean_iou_score(pred, labels)
-
+    return
 if __name__ == '__main__':
     train_folder = './hw3-train-validation/train/'
     ground_truth_folder = './hw3-train-validation/validation/'
@@ -145,10 +163,8 @@ if __name__ == '__main__':
         evaluation(ground_truth_folder, predict_folder)
     else:
         model = construct_model()
-        for i in range(n_epochs):
-            training(model, X_train, Y_train)
-            model = load_model(model_name)
-            labels = validation(model, X_valid, Y_valid)
-            #evaluation(ground_truth_folder, predict_folder)
-            evaluation_with_label(Y_train, labels)
-            del model
+        training(model, X_train, Y_train, X_valid, Y_valid)
+        model = load_model(model_name)
+        #labels = validation(model, X_valid, Y_valid)
+        #evaluation(ground_truth_folder, predict_folder)
+        #evaluation_with_label(Y_train, labels)
