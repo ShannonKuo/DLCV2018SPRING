@@ -4,8 +4,6 @@ import keras
 import numpy as np
 import os
 import h5py
-#import theano
-#import theano.sandbox.cuda.dnn
 import scipy.misc
 from mean_iou_evaluate import read_masks, mean_iou_score
 from keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose, Activation
@@ -16,9 +14,10 @@ import keras.backend as K
 import tensorflow as tf
 
 n_epochs = 1
-train_size = 10 #2313
+train_size = 1#2313
 valid_size = 257
 load = 0
+model_name = 'my_model2.h5'
 
 def read_image(data_size, folder):
     x = np.zeros((data_size, 512, 512, 3))
@@ -92,16 +91,17 @@ def training(model, X_train_, Y_train):
               optimizer='adam',
               metrics=['accuracy'])
     model.fit(X_train, Y_train, 
-          batch_size=1, epochs=n_epochs, verbose=1)
-    model.save('my_model.h5')
-    del model 
+          batch_size=4, epochs=1, verbose=1)
+    model.save(model_name)
 
 def validation(model, X_valid, Y_valid):
-    #score = model.evaluate(X_test, Y_test, verbose=0)
-    output = model.predict(X_valid, batch_size=None, verbose=0, steps=None)
+    output = model.predict(X_valid, batch_size=32, verbose=0, steps=None)
+    labels = np.zeros((output.shape[0], 512, 512, 3))
+    print("validation")
     for n in range(output.shape[0]):
         output_image = np.zeros((512, 512, 3))
         label = np.argmax(output[n], axis=2)
+        labels[n] = label
         for i in range(512):
             for j in range(512):
                 ans = label[i, j]
@@ -126,24 +126,12 @@ def validation(model, X_valid, Y_valid):
             os.makedirs(folder)
         scipy.misc.imsave(file_path, output_image)
 
-def softmax_sparse_crossentropy_ignoring_last_label(y_true, y_pred):
-    y_pred = K.reshape(y_pred, (-1, K.int_shape(y_pred)[-1]))
-    log_softmax = tf.nn.log_softmax(y_pred)
-
-    y_true = K.one_hot(tf.to_int32(K.flatten(y_true)), K.int_shape(y_pred)[-1]+1)
-    unpacked = tf.unstack(y_true, axis=-1)
-    y_true = tf.stack(unpacked[:-1], axis=-1)
-
-    cross_entropy = -K.sum(y_true * log_softmax, axis=1)
-    cross_entropy_mean = K.mean(cross_entropy)
-
-    return cross_entropy_mean
-
 def evaluation(ground_truth_folder, predict_folder):
     pred = read_masks(ground_truth_folder)
     labels = read_masks(predict_folder)
     score = mean_iou_score(pred, labels)
-    print("mean iou score: " , score)
+def evaluation_with_label(pred, labels):
+    score = mean_iou_score(pred, labels)
 
 if __name__ == '__main__':
     train_folder = './hw3-train-validation/train/'
@@ -152,10 +140,15 @@ if __name__ == '__main__':
     (X_train, Y_train) = read_image(train_size, train_folder)
     (X_valid, Y_valid) = read_image(valid_size, ground_truth_folder)
     if load == 1:
-        model = load_model('my_model.h5')
+        model = load_model(model_name)
+        validation(model, X_valid, Y_valid)
+        evaluation(ground_truth_folder, predict_folder)
     else:
         model = construct_model()
-        training(model, X_train, Y_train)
-        model = load_model('my_model.h5')
-    validation(model, X_valid, Y_valid)
-    evaluation(ground_truth_folder, predict_folder)
+        for i in range(n_epochs):
+            training(model, X_train, Y_train)
+            model = load_model(model_name)
+            labels = validation(model, X_valid, Y_valid)
+            #evaluation(ground_truth_folder, predict_folder)
+            evaluation_with_label(Y_train, labels)
+            del model
