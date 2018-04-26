@@ -15,15 +15,16 @@ from keras.callbacks import Callback
 import keras.backend as K
 import tensorflow as tf
 
-n_epochs = 3
+n_epochs = 5
 train_size = 2313
 valid_size = 257
-load = 0
-model_name = 'my_model2.h5'
+load = 1
+model_name = 'my_model_epoch5_cat.h5'
+save_model_name = 'my_model_epoch5_cat.h5'
 
 def read_image(data_size, folder):
     x = np.zeros((data_size, 512, 512, 3))
-    y = np.zeros((data_size, 512, 512, 7))
+    y = np.zeros((data_size, 512, 512, 7), dtype=bool)
     
     for i in range(data_size):
         index = str(i).zfill(4)
@@ -91,7 +92,7 @@ def construct_model():
 def training(model, X_train_, Y_train, X_valid):
     metrics = Metrics(X_valid)
     keras.optimizers.Adadelta(lr = 1.0, rho = 0.95, epsilon = 1e-06)
-    model.compile(loss='categorical_crossentropy',
+    model.compile(loss='binary_crossentropy',
               optimizer='Adadelta',
               metrics=['accuracy'])
     model.fit(X_train, Y_train, 
@@ -159,8 +160,10 @@ if __name__ == '__main__':
     (X_valid, Y_valid) = read_image(valid_size, ground_truth_folder)
     if load == 1:
         model = load_model(model_name)
-        validation(model, X_valid)
-        evaluation(ground_truth_folder, predict_folder)
+        model = training(model, X_train, Y_train, X_valid)
+        model.save(save_model_name)
+        #validation(model, X_valid)
+        #evaluation(ground_truth_folder, predict_folder)
     else:
         model = construct_model()
         model = training(model, X_train, Y_train, X_valid)
