@@ -15,12 +15,12 @@ from keras.callbacks import Callback
 import keras.backend as K
 import tensorflow as tf
 
-n_epochs = 5
+n_epochs = 40
 train_size = 2313
 valid_size = 257
 load = 1
-model_name = 'my_model_epoch5_cat.h5'
-save_model_name = 'my_model_epoch5_cat.h5'
+model_name = 'my_model_epoch15_cat.h5'
+save_model_name = 'my_model_epoch55_cat.h5'
 
 def read_image(data_size, folder):
     x = np.zeros((data_size, 512, 512, 3))
@@ -54,28 +54,28 @@ def read_image(data_size, folder):
 def construct_model():
     img_input = Input(shape=(512, 512, 3))
 
-    x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv1')(img_input)
-    x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv2')(x)
-    x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool')(x)
+    x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv1', trainable=False)(img_input)
+    x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv2', trainable=False)(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool', trainable=False)(x)
 
-    x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block2_conv1')(x)
-    x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block2_conv2')(x)
-    x = MaxPooling2D((2, 2), strides=(2, 2), name='block2_pool')(x)
+    x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block2_conv1', trainable=False)(x)
+    x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block2_conv2', trainable=False)(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name='block2_pool', trainable=False)(x)
 
-    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv1')(x)
-    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv2')(x)
-    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv3')(x)
-    x = MaxPooling2D((2, 2), strides=(2, 2), name='block3_pool')(x)
+    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv1', trainable=False)(x)
+    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv2', trainable=False)(x)
+    x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv3', trainable=False)(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name='block3_pool', trainable=False)(x)
 
-    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv1')(x)
-    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv2')(x)
-    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv3')(x)
-    x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool')(x)
+    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv1', trainable=False)(x)
+    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv2', trainable=False)(x)
+    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv3', trainable=False)(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool', trainable=False)(x)
 
-    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv1')(x)
-    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv2')(x)
-    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv3')(x)
-    x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool')(x)
+    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv1', trainable=False)(x)
+    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv2', trainable=False)(x)
+    x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv3', trainable=False)(x)
+    x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool', trainable=False)(x)
 
     x = Conv2D(4096, (7, 7), activation='relu', padding='same', name='block6_conv1')(x)
     x = Conv2D(4096, (1, 1), activation='relu', padding='same', name='block6_conv2')(x)
@@ -92,8 +92,8 @@ def construct_model():
 def training(model, X_train_, Y_train, X_valid):
     metrics = Metrics(X_valid)
     keras.optimizers.Adadelta(lr = 1.0, rho = 0.95, epsilon = 1e-06)
-    model.compile(loss='binary_crossentropy',
-              optimizer='Adadelta',
+    model.compile(loss='categorical_crossentropy',
+              optimizer='adam',
               metrics=['accuracy'])
     model.fit(X_train, Y_train, 
           batch_size=4, epochs=n_epochs, verbose=1, callbacks=[metrics])
