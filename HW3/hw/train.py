@@ -15,12 +15,15 @@ from keras.callbacks import Callback
 import keras.backend as K
 import tensorflow as tf
 
-n_epochs = 40
+n_epochs = 25
 train_size = 2313
 valid_size = 257
-load = 1
-model_name = 'my_model_epoch15_cat.h5'
-save_model_name = 'my_model_epoch55_cat.h5'
+load = 0
+model_name = 'my_model_epoch25.h5'
+save_model_name = 'my_model_epoch25.h5'
+
+from tensorflow.python.client import device_lib
+print(device_lib.list_local_devices())
 
 def read_image(data_size, folder):
     x = np.zeros((data_size, 512, 512, 3))
@@ -33,7 +36,6 @@ def read_image(data_size, folder):
         x[i] = img
 
     x = x.astype('float32')
-    x /= 255
 
     for i in range(data_size):
         index = str(i).zfill(4)
@@ -93,21 +95,18 @@ def training(model, X_train_, Y_train, X_valid):
     metrics = Metrics(X_valid)
     keras.optimizers.Adadelta(lr = 1.0, rho = 0.95, epsilon = 1e-06)
     model.compile(loss='categorical_crossentropy',
-              optimizer='adam',
+              optimizer='Adadelta',
               metrics=['accuracy'])
     model.fit(X_train, Y_train, 
-          batch_size=4, epochs=n_epochs, verbose=1, callbacks=[metrics])
+          batch_size=2, epochs=n_epochs, verbose=1, callbacks=[metrics])
     return model
 
 def validation(model, X_valid):
     print("validation")
     output = model.predict(X_valid, batch_size=1, verbose=0, steps=None)
-    print(output.shape)
-    #labels = np.zeros((output.shape[0], 512, 512))
     for n in range(output.shape[0]):
         output_image = np.zeros((512, 512, 3))
         label = np.argmax(output[n], axis=2)
-        #labels[n] = label
         for i in range(512):
             for j in range(512):
                 ans = label[i, j]
@@ -118,7 +117,7 @@ def validation(model, X_valid):
                 elif ans == 2:
                     output_image[i, j] = [255, 0, 255]
                 elif ans == 3:
-                    output_image[i, j] = [255, 0, 255]
+                    output_image[i, j] = [0, 255, 0]
                 elif ans == 4:
                     output_image[i, j] = [0, 0, 255]
                 elif ans == 5:
@@ -140,8 +139,9 @@ class Metrics(Callback):
         pred = read_masks(ground_truth_folder)
         labels = read_masks(predict_folder)
         score = mean_iou_score(pred, labels)
-        #pred = validation(model, self.x, self.y)
-        #score = mean_iou_score(pred, self.labels)
+        file = open("output_mean.txt", "w")
+        file.write(str(score))
+        file.close()
 
 def evaluation(ground_truth_folder, predict_folder):
     pred = read_masks(ground_truth_folder)
@@ -149,9 +149,6 @@ def evaluation(ground_truth_folder, predict_folder):
     score = mean_iou_score(pred, labels)
     return
 
-def evaluation_with_label(pred, labels):
-    score = mean_iou_score(pred, labels)
-    return
 if __name__ == '__main__':
     train_folder = './hw3-train-validation/train/'
     ground_truth_folder = './hw3-train-validation/validation/'
@@ -162,13 +159,7 @@ if __name__ == '__main__':
         model = load_model(model_name)
         model = training(model, X_train, Y_train, X_valid)
         model.save(save_model_name)
-        #validation(model, X_valid)
-        #evaluation(ground_truth_folder, predict_folder)
     else:
         model = construct_model()
         model = training(model, X_train, Y_train, X_valid)
         model.save(model_name)
-        #model = load_model(model_name)
-        #labels = validation(model, X_valid, Y_valid)
-        #evaluation(ground_truth_folder, predict_folder)
-        #evaluation_with_label(Y_train, labels)
