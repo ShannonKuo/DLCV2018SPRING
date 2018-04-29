@@ -13,6 +13,7 @@ from keras.metrics import binary_crossentropy
 from keras.callbacks import Callback
 from keras.preprocessing.image import ImageDataGenerator
 from keras.applications.xception import Xception
+from keras.applications.resnet50 import ResNet50
 import keras.backend as K
 import tensorflow as tf
 
@@ -23,7 +24,7 @@ print(device_lib.list_local_devices())
 #python3 train.py 18 0 my_model_epoch30_softmax_lr0.5.h5 my_model_epoch30_lr0.5_softmax.h5 Adadelta output_mean_softmax_lr0.5.txt softmax 0.5
 
 n_epochs = int(sys.argv[1])
-train_size = 1#2313
+train_size = 2313
 valid_size = 257
 load = int(sys.argv[2])
 model_name = sys.argv[3]#'my_model_epochtest.h5'
@@ -118,11 +119,11 @@ def construct_model():
     return model
 
 def construct_best_model():
-    base_model = Xception(include_top=False, weights='imagenet', input_tensor=None, 
-                          input_shape=(512,512,3), pooling='max', classes=7)
+    base_model = Xception(include_top=False, weights=None, input_tensor=None, 
+                          input_shape=(512,512,3), pooling='None', classes=7)
     x = base_model.output
-    x = Conv2D(4096, (7, 7), activation='relu', padding='same', name='block6_conv1')(x)
-    x = Conv2D(4096, (1, 1), activation='relu', padding='same', name='block6_conv2')(x)
+    x = Conv2D(1024, (7, 7), activation='relu', padding='same', name='block6_conv1')(x)
+    x = Conv2D(1024, (1, 1), activation='relu', padding='same', name='block6_conv2')(x)
     x = Conv2D(7, (1, 1), activation='relu', padding='same', name='block6_conv3')(x)
     x = Conv2DTranspose(7 , kernel_size=(64,64) ,  strides=(32,32) , 
                         padding='same', use_bias=False ,  data_format='channels_last')(x)
@@ -130,10 +131,30 @@ def construct_best_model():
 
     model = Model(inputs=base_model.input, outputs=x)
 
-    for layer in base_model.layers:
-        layer.trainable = False
+    #for layer in base_model.layers:
+    #    layer.trainable = False
     print(model.summary())
     return model
+
+def construct_resnet_model():
+    base_model = ResNet50(include_top=False, weights='imagenet', input_tensor=None, input_shape=(512,512,3), pooling=None, classes=1000)
+    x = base_model.output
+    x = Conv2D(4096, (7, 7), activation='relu', padding='same', name='block6_conv1')(x)
+    x = Conv2D(4096, (1, 1), activation='relu', padding='same', name='block6_conv2')(x)
+    x = Conv2D(7, (1, 1), activation='relu', padding='same', name='block6_conv3')(x)
+    x = Conv2DTranspose(7 , kernel_size=(64,64) ,  strides=(32,32) , 
+                        padding='same', use_bias=False ,  data_format='channels_last')(x)
+    x = Conv2DTranspose(7 , kernel_size=(64,64) ,  strides=(32,32) , 
+                        padding='same', use_bias=False ,  data_format='channels_last')(x)
+    x = Activation('softmax')(x)
+
+    model = Model(inputs=base_model.input, outputs=x)
+
+    #for layer in base_model.layers:
+    #    layer.trainable = False
+    print(model.summary())
+    return model
+
 
 def training(model, X_train_, Y_train, X_valid):
     metrics = Metrics(X_valid)
@@ -233,7 +254,8 @@ if __name__ == '__main__':
         else:
             if model_type == 'best':
                 print("constructing best model...")
-                model = construct_best_model()
+                model = construct_resnet_model()
+                #model = construct_best_model()
                 print("training best model...")
                 model = training(model, X_train, Y_train, X_valid)
                 model.save(model_name)
