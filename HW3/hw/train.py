@@ -254,8 +254,8 @@ if __name__ == '__main__':
         else:
             if model_type == 'best':
                 print("constructing best model...")
-                model = construct_resnet_model()
-                #model = construct_best_model()
+                #model = construct_resnet_model()
+                model = construct_best_model()
                 print("training best model...")
                 model = training(model, X_train, Y_train, X_valid)
                 model.save(model_name)
