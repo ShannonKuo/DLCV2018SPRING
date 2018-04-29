@@ -23,7 +23,7 @@ print(device_lib.list_local_devices())
 #python3 train.py 18 0 my_model_epoch30_softmax_lr0.5.h5 my_model_epoch30_lr0.5_softmax.h5 Adadelta output_mean_softmax_lr0.5.txt softmax 0.5
 
 n_epochs = int(sys.argv[1])
-train_size = 2313
+train_size = 1#2313
 valid_size = 257
 load = int(sys.argv[2])
 model_name = sys.argv[3]#'my_model_epochtest.h5'
@@ -33,6 +33,8 @@ output_file_name = sys.argv[6]
 data_augmentation = 0
 activation = sys.argv[7]
 learning_rate = float(sys.argv[8])
+train_test = sys.argv[9]
+model_type = sys.argv[10]
 
 # this will do preprocessing and realtime data augmentation
 datagen = ImageDataGenerator(
@@ -130,6 +132,8 @@ def construct_best_model():
 
     for layer in base_model.layers:
         layer.trainable = False
+    print(model.summary())
+    return model
 
 def training(model, X_train_, Y_train, X_valid):
     metrics = Metrics(X_valid)
@@ -195,10 +199,16 @@ class Metrics(Callback):
         file.write('\n')
         file.close()
 
-def evaluation(ground_truth_folder, predict_folder):
+def evaluation(model, X_valid):
+
+    validation(model, X_valid)
     pred = read_masks(ground_truth_folder)
     labels = read_masks(predict_folder)
     score = mean_iou_score(pred, labels)
+    #file = open(output_file_name, "a+")
+    #file.write(str(score))
+    #file.write('\n')
+    #file.close()
     return
 
 if __name__ == '__main__':
@@ -207,11 +217,29 @@ if __name__ == '__main__':
     predict_folder = './output/'
     (X_train, Y_train) = read_image(train_size, train_folder)
     (X_valid, Y_valid) = read_image(valid_size, ground_truth_folder)
-    if load == 1:
+
+    if train_test == 'test':
+        print("testing...")
         model = load_model(model_name)
-        model = training(model, X_train, Y_train, X_valid)
-        model.save(save_model_name)
+        evaluation(model, X_valid)
+        
     else:
-        model = construct_model()
-        model = training(model, X_train, Y_train, X_valid)
-        model.save(model_name)
+        if load == 1:
+            print("loading model...")
+            model = load_model(model_name)
+            print("training model...")
+            model = training(model, X_train, Y_train, X_valid)
+            model.save(save_model_name)
+        else:
+            if model_type == 'best':
+                print("constructing best model...")
+                model = construct_best_model()
+                print("training best model...")
+                model = training(model, X_train, Y_train, X_valid)
+                model.save(model_name)
+            else:
+                print("constructing baseline model...")
+                model = construct_model()
+                print("training baseline model...")
+                model = training(model, X_train, Y_train, X_valid)
+                model.save(model_name)
