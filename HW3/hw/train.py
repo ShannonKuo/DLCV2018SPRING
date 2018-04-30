@@ -6,7 +6,7 @@ import os
 import h5py
 import scipy.misc
 from mean_iou_evaluate import read_masks, mean_iou_score
-from keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose, Activation
+from keras.layers import * #Input, Conv2D, MaxPooling2D, Conv2DTranspose, Activation, Flatten, Dense, Dropout
 from keras.models import Model, load_model
 from keras.objectives import *
 from keras.metrics import binary_crossentropy
@@ -16,7 +16,7 @@ from keras.applications.xception import Xception
 from keras.applications.resnet50 import ResNet50
 import keras.backend as K
 import tensorflow as tf
-
+from keras.regularizers import l2
 from tensorflow.python.client import device_lib
 print(device_lib.list_local_devices())
 
@@ -24,11 +24,11 @@ print(device_lib.list_local_devices())
 #python3 train.py 18 0 my_model_epoch30_softmax_lr0.5.h5 my_model_epoch30_lr0.5_softmax.h5 Adadelta output_mean_softmax_lr0.5.txt softmax 0.5
 
 n_epochs = int(sys.argv[1])
-train_size = 2313
+train_size =2313
 valid_size = 257
 load = int(sys.argv[2])
-model_name = sys.argv[3]#'my_model_epochtest.h5'
-save_model_name = sys.argv[4]#'my_model_epochtest.h5'
+model_name = sys.argv[3]
+save_model_name = sys.argv[4]
 optimizer = sys.argv[5]
 output_file_name = sys.argv[6]
 data_augmentation = 0
@@ -36,7 +36,7 @@ activation = sys.argv[7]
 learning_rate = float(sys.argv[8])
 train_test = sys.argv[9]
 model_type = sys.argv[10]
-
+IMAGE_ORDERING = 'channels_last' 
 # this will do preprocessing and realtime data augmentation
 datagen = ImageDataGenerator(
      featurewise_center=False,  # set input mean to 0 over the dataset
@@ -139,12 +139,12 @@ def construct_best_model():
 def construct_resnet_model():
     base_model = ResNet50(include_top=False, weights='imagenet', input_tensor=None, input_shape=(512,512,3), pooling=None, classes=1000)
     x = base_model.output
-    x = Conv2D(4096, (7, 7), activation='relu', padding='same', name='block6_conv1')(x)
-    x = Conv2D(4096, (1, 1), activation='relu', padding='same', name='block6_conv2')(x)
+    x = Conv2D(1024, (7, 7), activation='relu', padding='same', name='block6_conv1')(x)
+    x = Conv2D(1024, (1, 1), activation='relu', padding='same', name='block6_conv2')(x)
     x = Conv2D(7, (1, 1), activation='relu', padding='same', name='block6_conv3')(x)
     x = Conv2DTranspose(7 , kernel_size=(64,64) ,  strides=(32,32) , 
                         padding='same', use_bias=False ,  data_format='channels_last')(x)
-    x = Conv2DTranspose(7 , kernel_size=(64,64) ,  strides=(32,32) , 
+    x = Conv2DTranspose(7 , kernel_size=(32,32) ,  strides=(8,8) , 
                         padding='same', use_bias=False ,  data_format='channels_last')(x)
     x = Activation('softmax')(x)
 
@@ -154,7 +154,124 @@ def construct_resnet_model():
     #    layer.trainable = False
     print(model.summary())
     return model
+# crop o1 wrt o2
+def crop( o1 , o2 , i  ):
+	o_shape2 = Model( i  , o2 ).output_shape
+	outputHeight2 = o_shape2[1]
+	outputWidth2 = o_shape2[2]
 
+	o_shape1 = Model( i  , o1 ).output_shape
+	outputHeight1 = o_shape1[1]
+	outputWidth1 = o_shape1[2]
+
+	cx = abs( outputWidth1 - outputWidth2 )
+	cy = abs( outputHeight2 - outputHeight1 )
+
+	if outputWidth1 > outputWidth2:
+		o1 = Cropping2D( cropping=((0,0) ,  (  0 , cx )), data_format=IMAGE_ORDERING  )(o1)
+	else:
+		o2 = Cropping2D( cropping=((0,0) ,  (  0 , cx )), data_format=IMAGE_ORDERING  )(o2)
+	
+	if outputHeight1 > outputHeight2 :
+		o1 = Cropping2D( cropping=((0,cy) ,  (  0 , 0 )), data_format=IMAGE_ORDERING  )(o1)
+	else:
+		o2 = Cropping2D( cropping=((0, cy ) ,  (  0 , 0 )), data_format=IMAGE_ORDERING  )(o2)
+
+	return o1 , o2 
+
+def construct_FCN8():
+	nClasses = 7
+	input_height = 512
+	input_width = 512
+	vgg_level = 3
+	# assert input_height%32 == 0
+	# assert input_width%32 == 0
+
+	# https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg16_weights_th_dim_ordering_th_kernels.h5
+	
+	img_input = Input(shape=(input_height,input_width,3))
+
+	x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv1', data_format=IMAGE_ORDERING, trainable=False )(img_input)
+	x = Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_conv2', data_format=IMAGE_ORDERING, trainable=False )(x)
+	x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool', data_format=IMAGE_ORDERING )(x)
+	f1 = x
+	# Block 2
+	x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block2_conv1', data_format=IMAGE_ORDERING, trainable=False )(x)
+	x = Conv2D(128, (3, 3), activation='relu', padding='same', name='block2_conv2', data_format=IMAGE_ORDERING, trainable=False )(x)
+	x = MaxPooling2D((2, 2), strides=(2, 2), name='block2_pool', data_format=IMAGE_ORDERING )(x)
+	f2 = x
+
+	# Block 3
+	x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv1', data_format=IMAGE_ORDERING, trainable=False )(x)
+	x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv2', data_format=IMAGE_ORDERING, trainable=False )(x)
+	x = Conv2D(256, (3, 3), activation='relu', padding='same', name='block3_conv3', data_format=IMAGE_ORDERING, trainable=False )(x)
+	x = MaxPooling2D((2, 2), strides=(2, 2), name='block3_pool', data_format=IMAGE_ORDERING )(x)
+	f3 = x
+
+	# Block 4
+	x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv1', data_format=IMAGE_ORDERING, trainable=False )(x)
+	x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv2', data_format=IMAGE_ORDERING, trainable=False )(x)
+	x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block4_conv3', data_format=IMAGE_ORDERING, trainable=False )(x)
+	x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool', data_format=IMAGE_ORDERING )(x)
+	f4 = x
+
+	# Block 5
+	x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv1', data_format=IMAGE_ORDERING, trainable=False )(x)
+	x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv2', data_format=IMAGE_ORDERING, trainable=False )(x)
+	x = Conv2D(512, (3, 3), activation='relu', padding='same', name='block5_conv3', data_format=IMAGE_ORDERING, trainable=False )(x)
+	x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool', data_format=IMAGE_ORDERING )(x)
+	f5 = x
+
+	#x = Flatten(name='flatten')(x)
+	#x = Dense(4096, activation='relu', name='fc1')(x)
+	#x = Dense(4096, activation='relu', name='fc2')(x)
+	#x = Dense( 1000 , activation='softmax', name='predictions')(x)
+	#weights_path = 'vgg16_weights_tf_dim_ordering_tf_kernels.h5'
+	#f5  = Model(  img_input , x  )
+	#f5.load_weights(weights_path, by_name=true)
+
+	o = f5
+
+	o = ( Conv2D( 4096 , ( 7 , 7 ) , activation='relu' , padding='same', data_format=IMAGE_ORDERING))(o)
+	o = Dropout(0.5)(o)
+	o = ( Conv2D( 4096 , ( 1 , 1 ) , activation='relu' , padding='same', data_format=IMAGE_ORDERING))(o)
+	o = Dropout(0.5)(o)
+
+	o = ( Conv2D( nClasses ,  ( 1 , 1 ) ,kernel_initializer='he_normal' , padding='same', data_format=IMAGE_ORDERING))(o)
+	o = Conv2DTranspose( nClasses , kernel_size=(4,4) ,  strides=(2,2) , use_bias=False, data_format=IMAGE_ORDERING, padding='same' )(o)
+
+	o2 = f4
+	o2 = ( Conv2D( nClasses ,  ( 1 , 1 ) ,kernel_initializer='he_normal' , padding='same', data_format=IMAGE_ORDERING))(o2)
+	
+	o , o2 = crop( o , o2 , img_input )
+	
+	o = Add()([ o , o2 ])
+
+	o = Conv2DTranspose( nClasses , kernel_size=(4,4) ,  strides=(2,2) , use_bias=False, data_format=IMAGE_ORDERING, padding='same' )(o)
+	o2 = f3 
+	o2 = ( Conv2D( nClasses ,  ( 1 , 1 ) ,kernel_initializer='he_normal' , padding='same', data_format=IMAGE_ORDERING))(o2)
+	o2 , o = crop( o2 , o , img_input )
+	o  = Add()([ o2 , o ])
+
+
+	o = Conv2DTranspose( nClasses , kernel_size=(16,16) ,  strides=(8,8) ,  use_bias=False, data_format=IMAGE_ORDERING, padding='same', )(o)
+	
+	o_shape = Model(img_input , o ).output_shape
+	
+	outputHeight = o_shape[1]
+	outputWidth = o_shape[2]
+	print(Model(img_input , o ).summary())
+	#o = (Reshape((  -1  , outputHeight*outputWidth   )))(o)
+	#o = (Permute((2, 1)))(o)
+	o = (Activation('softmax'))(o)
+	model = Model( img_input , o )
+	#model.outputWidth = outputWidth
+	#model.outputHeight = outputHeight
+	weights_path = 'vgg16_weights_tf_dim_ordering_tf_kernels.h5'
+	model.load_weights(weights_path, by_name=True)
+	return model
+	
+	
 
 def training(model, X_train_, Y_train, X_valid):
     metrics = Metrics(X_valid)
@@ -180,6 +297,7 @@ def training(model, X_train_, Y_train, X_valid):
 def validation(model, X_valid):
     print("validation")
     output = model.predict(X_valid, batch_size=1, verbose=0, steps=None)
+
     for n in range(output.shape[0]):
         output_image = np.zeros((512, 512, 3))
         label = np.argmax(output[n], axis=2)
@@ -226,10 +344,7 @@ def evaluation(model, X_valid):
     pred = read_masks(ground_truth_folder)
     labels = read_masks(predict_folder)
     score = mean_iou_score(pred, labels)
-    #file = open(output_file_name, "a+")
-    #file.write(str(score))
-    #file.write('\n')
-    #file.close()
+
     return
 
 if __name__ == '__main__':
@@ -254,9 +369,11 @@ if __name__ == '__main__':
         else:
             if model_type == 'best':
                 print("constructing best model...")
-                #model = construct_resnet_model()
-                model = construct_best_model()
+                model = construct_FCN8()
+				
                 print("training best model...")
+                print(X_train.shape)
+                print(Y_train.shape)
                 model = training(model, X_train, Y_train, X_valid)
                 model.save(model_name)
             else:
