@@ -37,6 +37,9 @@ learning_rate = float(sys.argv[8])
 train_test = sys.argv[9]
 model_type = sys.argv[10]
 IMAGE_ORDERING = 'channels_last' 
+ground_truth_folder = sys.argv[11]#'./hw3-train-validation/validation/'
+predict_folder = sys.argv[12]#'./output/'
+
 # this will do preprocessing and realtime data augmentation
 datagen = ImageDataGenerator(
      featurewise_center=False,  # set input mean to 0 over the dataset
@@ -116,6 +119,7 @@ def construct_model():
     model = Model(img_input, x)
     weights_path = 'vgg16_weights_tf_dim_ordering_tf_kernels.h5'
     model.load_weights(weights_path, by_name=True)
+    print(model.summary())
     return model
 
 def construct_best_model():
@@ -154,6 +158,7 @@ def construct_resnet_model():
     #    layer.trainable = False
     print(model.summary())
     return model
+
 # crop o1 wrt o2
 def crop( o1 , o2 , i  ):
 	o_shape2 = Model( i  , o2 ).output_shape
@@ -180,14 +185,16 @@ def crop( o1 , o2 , i  ):
 	return o1 , o2 
 
 def construct_FCN8():
+
+    #code from
+    #https://github.com/divamgupta/image-segmentation-keras/blob/master/Models/FCN8.py
+	#https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg16_weights_th_dim_ordering_th_kernels.h5
+
 	nClasses = 7
 	input_height = 512
 	input_width = 512
 	vgg_level = 3
-	# assert input_height%32 == 0
-	# assert input_width%32 == 0
 
-	# https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg16_weights_th_dim_ordering_th_kernels.h5
 	
 	img_input = Input(shape=(input_height,input_width,3))
 
@@ -222,13 +229,6 @@ def construct_FCN8():
 	x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool', data_format=IMAGE_ORDERING )(x)
 	f5 = x
 
-	#x = Flatten(name='flatten')(x)
-	#x = Dense(4096, activation='relu', name='fc1')(x)
-	#x = Dense(4096, activation='relu', name='fc2')(x)
-	#x = Dense( 1000 , activation='softmax', name='predictions')(x)
-	#weights_path = 'vgg16_weights_tf_dim_ordering_tf_kernels.h5'
-	#f5  = Model(  img_input , x  )
-	#f5.load_weights(weights_path, by_name=true)
 
 	o = f5
 
@@ -261,12 +261,8 @@ def construct_FCN8():
 	outputHeight = o_shape[1]
 	outputWidth = o_shape[2]
 	print(Model(img_input , o ).summary())
-	#o = (Reshape((  -1  , outputHeight*outputWidth   )))(o)
-	#o = (Permute((2, 1)))(o)
 	o = (Activation('softmax'))(o)
 	model = Model( img_input , o )
-	#model.outputWidth = outputWidth
-	#model.outputHeight = outputHeight
 	weights_path = 'vgg16_weights_tf_dim_ordering_tf_kernels.h5'
 	model.load_weights(weights_path, by_name=True)
 	return model
@@ -274,7 +270,7 @@ def construct_FCN8():
 	
 
 def training(model, X_train_, Y_train, X_valid):
-    metrics = Metrics(X_valid)
+    metrics = Metrics(X_valid, model)
     keras.optimizers.Adadelta(lr = learning_rate, rho = 0.95, epsilon = 1e-06)
     model.compile(loss='categorical_crossentropy',
               optimizer=optimizer,
@@ -326,15 +322,24 @@ def validation(model, X_valid):
         scipy.misc.imsave(file_path, output_image)
 
 class Metrics(Callback):
-    def __init__(self, x):
+    def __init__(self, x, model):
         self.x = x
+        self.model = model
+        self.prev_high_score = 0.0
     def on_epoch_end(self, epoch, logs={}):
         validation(model, self.x)
         pred = read_masks(ground_truth_folder)
         labels = read_masks(predict_folder)
-        score = mean_iou_score(pred, labels)
+        now_score = mean_iou_score(pred, labels)
+        print(now_score)
+        print(self.prev_high_score)
+        if (now_score >= self.prev_high_score):
+            print("save model")
+            self.model.save(model_name)
+            self.prev_high_score = now_score
+        
         file = open(output_file_name, "a+")
-        file.write(str(score))
+        file.write(str(now_score))
         file.write('\n')
         file.close()
 
@@ -343,14 +348,14 @@ def evaluation(model, X_valid):
     validation(model, X_valid)
     pred = read_masks(ground_truth_folder)
     labels = read_masks(predict_folder)
-    score = mean_iou_score(pred, labels)
+    now_score = mean_iou_score(pred, labels)
 
     return
 
 if __name__ == '__main__':
     train_folder = './hw3-train-validation/train/'
-    ground_truth_folder = './hw3-train-validation/validation/'
-    predict_folder = './output/'
+    #ground_truth_folder = './hw3-train-validation/validation/'
+    #predict_folder = './output/'
     (X_train, Y_train) = read_image(train_size, train_folder)
     (X_valid, Y_valid) = read_image(valid_size, ground_truth_folder)
 
@@ -365,20 +370,15 @@ if __name__ == '__main__':
             model = load_model(model_name)
             print("training model...")
             model = training(model, X_train, Y_train, X_valid)
-            model.save(save_model_name)
         else:
             if model_type == 'best':
                 print("constructing best model...")
                 model = construct_FCN8()
 				
                 print("training best model...")
-                print(X_train.shape)
-                print(Y_train.shape)
                 model = training(model, X_train, Y_train, X_valid)
-                model.save(model_name)
             else:
                 print("constructing baseline model...")
                 model = construct_model()
                 print("training baseline model...")
                 model = training(model, X_train, Y_train, X_valid)
-                model.save(model_name)
