@@ -6,39 +6,35 @@ import os
 import h5py
 import scipy.misc
 from mean_iou_evaluate import read_masks, mean_iou_score
-from keras.layers import * #Input, Conv2D, MaxPooling2D, Conv2DTranspose, Activation, Flatten, Dense, Dropout
+from keras.layers import *
 from keras.models import Model, load_model
 from keras.objectives import *
 from keras.metrics import binary_crossentropy
 from keras.callbacks import Callback
 from keras.preprocessing.image import ImageDataGenerator
-from keras.applications.xception import Xception
-from keras.applications.resnet50 import ResNet50
 import keras.backend as K
 import tensorflow as tf
 from keras.regularizers import l2
-from tensorflow.python.client import device_lib
-print(device_lib.list_local_devices())
 
 #baseline 0.642
 #python3 train.py 18 0 my_model_epoch30_softmax_lr0.5.h5 my_model_epoch30_lr0.5_softmax.h5 Adadelta output_mean_softmax_lr0.5.txt softmax 0.5
 
-n_epochs = 25#int(sys.argv[1])
+n_epochs = 25
 train_size =2313
 valid_size = 257
-load = 0#int(sys.argv[2])
+load = 0
 model_name = sys.argv[1]
-save_model_name = "model.h5"#sys.argv[4]
-optimizer = "Adadelta"#sys.argv[5]
-output_file_name = "output.txt"#sys.argv[6]
+save_model_name = "model.h5"
+optimizer = "Adadelta"
+output_file_name = "output.txt"
 data_augmentation = 0
-activation = "softmax"#sys.argv[7]
-learning_rate = 0.5#float(sys.argv[8])
+activation = "softmax"
+learning_rate = 0.5
 train_test = sys.argv[2]
 model_type = sys.argv[3]
 IMAGE_ORDERING = 'channels_last' 
-ground_truth_folder = sys.argv[4]#'./hw3-train-validation/validation/'
-predict_folder = sys.argv[5]#'./output/'
+ground_truth_folder = sys.argv[4]
+predict_folder = sys.argv[5]
 
 # this will do preprocessing and realtime data augmentation
 datagen = ImageDataGenerator(
