@@ -33,7 +33,7 @@ learning_rate = 0.5
 train_test = sys.argv[2]
 model_type = sys.argv[3]
 IMAGE_ORDERING = 'channels_last' 
-ground_truth_folder = sys.argv[4]
+testing_folder = sys.argv[4]
 predict_folder = sys.argv[5]
 
 # this will do preprocessing and realtime data augmentation
@@ -80,6 +80,7 @@ def read_image(data_size, folder):
         y[i, img == 7, 5] = 1  # (White: 111) Barren land 
         y[i, img == 0, 6] = 1  # (Black: 000) Unknown 
     return (x, y)
+
 
 def construct_model():
     img_input = Input(shape=(512, 512, 3))
@@ -276,9 +277,7 @@ def validation(model, X_valid):
                     output_image[i, j] = [255, 255, 255]
                 elif ans == 6:
                     output_image[i, j] = [0, 0, 0]
-        index = str(n).zfill(4)
-        folder = './output'
-        file_path = folder + '/' + index + '_mask.png'
+        file_path = predict_folder + '/' + index + '_mask.png'
         if not os.path.exists(folder):
             os.makedirs(folder)
         scipy.misc.imsave(file_path, output_image)
@@ -290,7 +289,7 @@ class Metrics(Callback):
         self.prev_high_score = 0.0
     def on_epoch_end(self, epoch, logs={}):
         validation(model, self.x)
-        pred = read_masks(ground_truth_folder)
+        pred = read_masks(testing_folder)
         labels = read_masks(predict_folder)
         now_score = mean_iou_score(pred, labels)
         if (now_score >= self.prev_high_score):
@@ -303,13 +302,45 @@ class Metrics(Callback):
         file.write('\n')
         file.close()
 
-def evaluation(model, X_valid):
+def evaluation(model):
+    print("evaluation")
+    
+    file_list = [file for file in os.listdir(testing_folder) if file.endswith('_sat.jpg')]
+    file_list.sort()
 
-    validation(model, X_valid)
-    pred = read_masks(ground_truth_folder)
-    labels = read_masks(predict_folder)
-    now_score = mean_iou_score(pred, labels)
+    x = np.zeros((len(file_list), 512, 512, 3))
+    for i, file in enumerate(file_list):
+        img = scipy.misc.imread(os.path.join(testing_folder, file))
+        x[i] = img
 
+    x = x.astype('float32')
+
+    output = model.predict(x, batch_size=1, verbose=0, steps=None)
+
+    for n in range(len(output)):
+        output_image = np.zeros((512, 512, 3))
+        label = np.argmax(output[n], axis=2)
+        for i in range(512):
+            for j in range(512):
+                ans = label[i, j]
+                if ans == 0:
+                    output_image[i, j] = [0, 255, 255]
+                elif ans == 1:
+                    output_image[i, j] = [255, 255, 0]
+                elif ans == 2:
+                    output_image[i, j] = [255, 0, 255]
+                elif ans == 3:
+                    output_image[i, j] = [0, 255, 0]
+                elif ans == 4:
+                    output_image[i, j] = [0, 0, 255]
+                elif ans == 5:
+                    output_image[i, j] = [255, 255, 255]
+                elif ans == 6:
+                    output_image[i, j] = [0, 0, 0]
+        file_path = predict_folder + '/' + file_list[n][0:4] + '_mask.png'
+        if not os.path.exists(predict_folder):
+            os.makedirs(predict_folder)
+        scipy.misc.imsave(file_path, output_image)
     return
 
 if __name__ == '__main__':
@@ -318,12 +349,12 @@ if __name__ == '__main__':
     if train_test == 'test':
         print("testing...")
         model = load_model(model_name)
-        (X_valid, Y_valid) = read_image(valid_size, ground_truth_folder)
-        evaluation(model, X_valid)
+        #(X_valid, Y_valid) = read_image(valid_size, ground_truth_folder)
+        evaluation(model)
         
     else:
         (X_train, Y_train) = read_image(train_size, train_folder)
-        (X_valid, Y_valid) = read_image(valid_size, ground_truth_folder)
+        (X_valid, Y_valid) = read_image(valid_size, testing_folder)
         if load == 1:
             print("loading model...")
             model = load_model(model_name)
