@@ -6,7 +6,6 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.utils import save_image
-from dataset import DatasetFromFolder
 import scipy.misc
 import os
 
@@ -125,7 +124,7 @@ def training(data_loader):
     return model
 
 def testing(model, data_loader):
-    if not os.path.exists(output_folder):
+    if not os.path.exists(test_output_folder):
         os.makedirs(test_output_folder)
     for i, img in enumerate(data_loader):
         if args.cuda:
