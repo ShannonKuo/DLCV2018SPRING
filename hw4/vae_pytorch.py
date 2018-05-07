@@ -6,6 +6,7 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.utils import save_image
+from util import summary
 import torchvision.transforms.functional as F
 import scipy.misc
 import os
@@ -17,7 +18,8 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-num_epochs = 30
+debug = 1
+num_epochs = 1
 batch_size = 32
 learning_rate = 1e-3
 output_folder = './output'
@@ -52,8 +54,8 @@ def load_image(folder):
     for i, file in enumerate(file_list):
         img = scipy.misc.imread(os.path.join(folder, file))
         x.append(img)
-        #if (i > 10):
-        #   break
+        if (i > 10 and debug == 1):
+           break
 
     x = [transforms.ToTensor()(i) for i in x]
     dataloader = DataLoader(x, batch_size=batch_size, shuffle=True)
@@ -65,26 +67,53 @@ class autoencoder(nn.Module):
     def __init__(self):
         super(autoencoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(3, 16, 3, stride=3, padding=1),  # b, 16, 10, 10
+            nn.Conv2d(3, 16, 3, stride=1, padding=2),  # b, 16, 64, 64
             nn.ReLU(True),
-            nn.MaxPool2d(2, stride=2),  # b, 16, 5, 5
-            nn.Conv2d(16, 8, 3, stride=2, padding=1),  # b, 8, 3, 3
+            nn.MaxPool2d(2, stride=2),  # b, 16, 32, 32
+            nn.Conv2d(16, 8, 3, stride=1, padding=2),  # b, 8, 32, 32
             nn.ReLU(True),
-            nn.MaxPool2d(2, stride=1)  # b, 8, 2, 2
+            nn.MaxPool2d(2, stride=2)  # b, 8, 16, 16
         )
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(8, 16, 3, stride=2),  # b, 16, 5, 5
+            nn.ConvTranspose2d(4, 8, 3, stride=1, padding=2),  # b, 8, 16, 16
             nn.ReLU(True),
-            nn.ConvTranspose2d(16, 8, 5, stride=3, padding=1),  # b, 8, 15, 15
+            nn.ConvTranspose2d(8, 16, 3, stride=1, padding=2),  # b, 16, 32, 32
             nn.ReLU(True),
-            nn.ConvTranspose2d(8, 3, 2, stride=2, padding=1),  # b, 1, 28, 28
+            nn.ConvTranspose2d(16, 3, 3, stride=1, padding=0),  # b, 3, 64, 64
             nn.Tanh()
         )
+        self.conv11 = nn.Conv2d(3, 4, 3, stride=1, padding=2) # 4, 8, 8
+        self.conv12 = nn.Conv2d(3, 4, 3, stride=1, padding=2)
+    def encode(self, x):
+        return self.conv11(x), self.conv12(x)
+    def reparameterize(self, mu, logvar):
+        std = logvar.mul(0.5).exp_()
+        if torch.cuda.is_available():
+            eps = torch.cuda.FloatTensor(std.size()).normal_()
+        else:
+            eps = torch.FloatTensor(std.size()).normal_()
+        eps = Variable(eps)
+        return eps.mul(std).add_(mu)
 
     def forward(self, x):
-        x = self.encoder(x)
+        mu, logvar = self.encode(x)
+        x = self.reparameterize(mu, logvar)
         x = self.decoder(x)
-        return x
+        return x, mu, logvar
+def loss_function(recon_x, x, mu, logvar):
+    """
+    recon_x: generating images
+    x: origin images
+    mu: latent mean
+    logvar: latent log variance
+    """
+    criterion = nn.MSELoss()
+    BCE = criterion(recon_x, x)  # mse loss
+    # loss = 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+    KLD_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
+    KLD = torch.sum(KLD_element).mul_(-0.5)
+    # KL divergence
+    return BCE + KLD
 
 def training(data_loader, file_list):
     print("start training")
@@ -92,7 +121,7 @@ def training(data_loader, file_list):
         model = autoencoder().cuda()
     else:
         model = autoencoder().cpu()
-    criterion = nn.MSELoss()
+    #print(summary((3, 64, 64), model))
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
                                 weight_decay=1e-5)
 
@@ -106,8 +135,8 @@ def training(data_loader, file_list):
             else:
                 img = Variable(img).cpu()
             # ===================forward=====================
-            output = model(img)
-            loss = criterion(output, img)
+            output, mu, logvar = model(img)
+            loss = loss_function(output, img, mu, logvar)
             # ===================backward====================
             optimizer.zero_grad()
             loss.backward()
@@ -134,7 +163,7 @@ def testing(model, data_loader, file_list):
             img = Variable(img).cuda()
         else:
             img = Variable(img).cpu()
-        output = model(img)
+        output, mu, logvar = model(img)
         pic = to_img(output.cpu().data)
         for j in range(len(pic)):
             file_path = test_output_folder + '/' + file_list[idx]
