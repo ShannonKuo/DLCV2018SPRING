@@ -17,11 +17,11 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-
-num_epochs = 1
-batch_size = 128
+num_epochs = 10
+batch_size = 1
 learning_rate = 1e-3
 output_folder = './output'
+test_output_folder = './test_output'
 img_transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
@@ -41,7 +41,7 @@ parser.add_argument('--log-interval', type=int, default=10, metavar='N',
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-device = torch.device("cuda" if args.cuda else "cpu")
+#device = torch.device("cuda" if args.cuda else "cpu")
 
 def load_image(folder):
     print("load_image...")
@@ -52,8 +52,8 @@ def load_image(folder):
     for i, file in enumerate(file_list):
         img = scipy.misc.imread(os.path.join(folder, file))
         x.append(img)
-        if (i > 10):
-            break
+        #if (i > 10):
+        #    break
 
     x = [transforms.ToTensor()(i) for i in x]
     dataloader = DataLoader(x, batch_size=batch_size, shuffle=True)
@@ -88,7 +88,10 @@ class autoencoder(nn.Module):
 
 def training(data_loader):
     print("start training")
-    model = autoencoder().to(device)
+    if args.cuda:
+        model = autoencoder().cuda()
+    else:
+        model = autoencoder().cpu()
     criterion = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
                                 weight_decay=1e-5)
@@ -98,7 +101,10 @@ def training(data_loader):
     cnt = 0
     for epoch in range(num_epochs):
         for img in data_loader:
-            img = Variable(img).to(device)
+            if args.cuda:
+                img = Variable(img).cuda()
+            else:
+                img = Variable(img).cpu()
             # ===================forward=====================
             output = model(img)
             loss = criterion(output, img)
@@ -120,13 +126,15 @@ def training(data_loader):
 
 def testing(model, data_loader):
     if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+        os.makedirs(test_output_folder)
     for i, img in enumerate(data_loader):
-        img = Variable(img).to(device)
-
+        if args.cuda:
+            img = Variable(img).cuda()
+        else:
+            img = Variable(img).cpu()
         output = model(img)
         pic = to_img(output.cpu().data)
-        save_image(pic, output_folder + '/image_{}.png'.format(i))
+        save_image(pic, test_output_folder + '/image_{}.png'.format(i))
      
 
 if __name__ == '__main__':
