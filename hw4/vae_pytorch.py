@@ -6,6 +6,7 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.utils import save_image
+import torchvision.transforms.functional as F
 import scipy.misc
 import os
 
@@ -16,8 +17,8 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-num_epochs = 10
-batch_size = 1
+num_epochs = 30
+batch_size = 32
 learning_rate = 1e-3
 output_folder = './output'
 test_output_folder = './test_output'
@@ -52,12 +53,12 @@ def load_image(folder):
         img = scipy.misc.imread(os.path.join(folder, file))
         x.append(img)
         #if (i > 10):
-        #    break
+        #   break
 
     x = [transforms.ToTensor()(i) for i in x]
     dataloader = DataLoader(x, batch_size=batch_size, shuffle=True)
     print("finish load image")
-    return dataloader
+    return (dataloader, file_list)
 
 
 class autoencoder(nn.Module):
@@ -85,7 +86,7 @@ class autoencoder(nn.Module):
         x = self.decoder(x)
         return x
 
-def training(data_loader):
+def training(data_loader, file_list):
     print("start training")
     if args.cuda:
         model = autoencoder().cuda()
@@ -97,8 +98,8 @@ def training(data_loader):
 
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
-    cnt = 0
     for epoch in range(num_epochs):
+        idx = 0
         for img in data_loader:
             if args.cuda:
                 img = Variable(img).cuda()
@@ -111,21 +112,23 @@ def training(data_loader):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            cnt += 1
+
+            if epoch % 10 == 0:
+                pic = to_img(output.cpu().data)
+                for i in range(len(pic)):
+                    file_path = output_folder + '/' + file_list[idx]
+                    save_image(pic[i], output_folder + '/' + file_list[idx], normalize=True)
+                    idx += 1
         # ===================log========================
         print('epoch [{}/{}], loss:{:.4f}'.
                 format(epoch+1, num_epochs, loss.data[0]))
-        if epoch % 10 == 0:
-            pic = to_img(output.cpu().data)
-            
-            save_image(pic, output_folder + '/image_{}.png'.format(epoch))
-     
     torch.save(model.state_dict(), './conv_autoencoder.pth')
     return model
 
-def testing(model, data_loader):
+def testing(model, data_loader, file_list):
     if not os.path.exists(test_output_folder):
         os.makedirs(test_output_folder)
+    idx = 0
     for i, img in enumerate(data_loader):
         if args.cuda:
             img = Variable(img).cuda()
@@ -133,11 +136,13 @@ def testing(model, data_loader):
             img = Variable(img).cpu()
         output = model(img)
         pic = to_img(output.cpu().data)
-        save_image(pic, test_output_folder + '/image_{}.png'.format(i))
-     
+        for j in range(len(pic)):
+            file_path = test_output_folder + '/' + file_list[idx]
+            save_image(pic[j], test_output_folder + '/' + file_list[idx], normalize=True)
+            idx += 1
 
 if __name__ == '__main__':
-    train_data_loader = load_image('./hw4_data/train')
-    test_data_loader = load_image('./hw4_data/test')
-    model = training(train_data_loader)
-    testing(model, test_data_loader)
+    train_data_loader, train_file_list = load_image('./hw4_data/train')
+    test_data_loader, test_file_list = load_image('./hw4_data/test')
+    model = training(train_data_loader, train_file_list)
+    testing(model, test_data_loader, test_file_list)
