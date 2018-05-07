@@ -18,8 +18,8 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 1
-num_epochs = 1
+debug = 0
+num_epochs = 2
 batch_size = 32
 learning_rate = 1e-3
 output_folder = './output'
@@ -75,16 +75,17 @@ class autoencoder(nn.Module):
             nn.MaxPool2d(2, stride=2)  # b, 8, 16, 16
         )
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(4, 8, 3, stride=1, padding=2),  # b, 8, 16, 16
+            nn.ConvTranspose2d(4, 8, 3, stride=2, padding=2),  # b, 8, 16, 16
             nn.ReLU(True),
-            nn.ConvTranspose2d(8, 16, 3, stride=1, padding=2),  # b, 16, 32, 32
+            nn.ConvTranspose2d(8, 16, 3, stride=2, padding=2),  # b, 16, 32, 32
             nn.ReLU(True),
-            nn.ConvTranspose2d(16, 3, 3, stride=1, padding=0),  # b, 3, 64, 64
+            nn.ConvTranspose2d(16, 3, 4, stride=2, padding=0),  # b, 3, 64, 64
             nn.Tanh()
         )
-        self.conv11 = nn.Conv2d(3, 4, 3, stride=1, padding=2) # 4, 8, 8
-        self.conv12 = nn.Conv2d(3, 4, 3, stride=1, padding=2)
+        self.conv11 = nn.Conv2d(8, 4, 3, stride=2, padding=2) # 4, 8, 8
+        self.conv12 = nn.Conv2d(8, 4, 3, stride=2, padding=2)
     def encode(self, x):
+        x = self.encoder(x)
         return self.conv11(x), self.conv12(x)
     def reparameterize(self, mu, logvar):
         std = logvar.mul(0.5).exp_()
