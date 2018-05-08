@@ -24,7 +24,7 @@ if debug == 1:
 else:
     num_epochs = 20
 batch_size = 32
-learning_rate = 1e-4
+learning_rate = 1e-3
 output_folder = './output'
 test_output_folder = './test_output'
 img_transform = transforms.Compose([
@@ -75,21 +75,27 @@ class autoencoder(nn.Module):
             nn.MaxPool2d(2, stride=2),  # b, 16, 32, 32
             nn.Conv2d(16, 8, 3, stride=1, padding=2),  # b, 8, 32, 32
             nn.ReLU(True),
-            nn.MaxPool2d(2, stride=2)  # b, 8, 16, 16
+            nn.MaxPool2d(2, stride=2)  # b, 8, 17, 17
         )
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(4, 8, 3, stride=2, padding=2),  # b, 8, 16, 16
             nn.ReLU(True),
-            nn.ConvTranspose2d(8, 16, 3, stride=2, padding=2),  # b, 16, 32, 32
+            nn.ConvTranspose2d(8, 16, 4, stride=2, padding=0),  # b, 16, 32, 32
             nn.ReLU(True),
-            nn.ConvTranspose2d(16, 3, 4, stride=2, padding=0),  # b, 3, 64, 64
+            nn.ConvTranspose2d(16, 3, 5, stride=1, padding=0),  # b, 3, 64, 64
             nn.Tanh()
         )
-        self.conv11 = nn.Conv2d(8, 4, 3, stride=2, padding=2) # 4, 8, 8
-        self.conv12 = nn.Conv2d(8, 4, 3, stride=2, padding=2)
+        self.fcn11 = nn.Linear(2312, 1024)
+        self.fcn12 = nn.Linear(2312, 1024)
+        #self.conv11 = nn.Conv2d(8, 4, 3, stride=2, padding=2) # 4, 8, 8
+        #self.conv12 = nn.Conv2d(8, 4, 3, stride=2, padding=2)
+
     def encode(self, x):
         x = self.encoder(x)
-        return self.conv11(x), self.conv12(x)
+        x = x.view(-1, x.size()[1] * x.size()[2] * x.size()[3])
+
+        return self.fcn11(x), self.fcn12(x)
+
     def reparameterize(self, mu, logvar):
         std = logvar.mul(0.5).exp_()
         if torch.cuda.is_available():
@@ -97,20 +103,21 @@ class autoencoder(nn.Module):
         else:
             eps = torch.FloatTensor(std.size()).normal_()
         eps = Variable(eps)
-        if self.training():
+        if self.training:
             return eps.mul(std).add_(mu)
         else:
             return mu
 
     def forward(self, x):
-        #mu, logvar = self.encode(x)
-        #z = self.reparameterize(mu, logvar)
-        #z = self.decoder(z)
-        #return z, mu, logvar
-        x = self.encoder(x)
-        x = self.conv11(x)
-        x = self.decoder(x)
-        return x
+        mu, logvar = self.encode(x)
+        z = self.reparameterize(mu, logvar)
+        z = z.view(-1, 4, 16, 16)
+        z = self.decoder(z)
+        return z, mu, logvar
+        #x = self.encoder(x)
+        #x = self.conv11(x)
+        #x = self.decoder(x)
+        #return x
 def loss_function(recon_x, x, mu, logvar):
     """
     recon_x: generating images
@@ -125,7 +132,8 @@ def loss_function(recon_x, x, mu, logvar):
     KLD = torch.sum(KLD_element).mul_(-0.5)
     # KL divergence
     lambdaKL = 1e-5
-    return BCE + KLD.mul_(lambdaKL)
+    KLD = KLD.mul_(lambdaKL)
+    return BCE + KLD
 
 def training(data_loader, file_list):
     print("start training")
@@ -157,17 +165,17 @@ def training(data_loader, file_list):
                 id += 1
             """
             # ===================forward=====================
-            #output, mu, logvar = model(img)
-            output = model(img)
-            #loss = loss_function(output, img, mu, logvar)
-            loss = nn.MSELoss()(output, img)
+            output, mu, logvar = model(img)
+            #output = model(img)
+            loss = loss_function(output, img, mu, logvar)
+            #loss = nn.MSELoss()(output, img)
             # ===================backward====================
             optimizer.zero_grad()
             loss.backward()
             train_loss += loss.item()
             optimizer.step()
 
-            if epoch == num_epochs - 1:
+            if idx < 10:
                 pic = to_img(output.cpu().data)
                 for i in range(len(pic)):
                     file_path = output_folder + '/' + file_list[idx]
@@ -191,8 +199,8 @@ def testing(model, data_loader, file_list):
                 img = Variable(img).cuda()
             else:
                 img = Variable(img).cpu()
-            #output, mu, logvar = model(img)
-            output = model(img)
+            output, mu, logvar = model(img)
+            #output = model(img)
             pic = to_img(output.cpu().data)
             for j in range(len(pic)):
                 file_path = test_output_folder + '/' + file_list[idx]
