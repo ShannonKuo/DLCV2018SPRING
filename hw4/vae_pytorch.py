@@ -6,7 +6,6 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.utils import save_image
-from util import summary
 import torchvision.transforms.functional as F
 import scipy.misc
 import os
