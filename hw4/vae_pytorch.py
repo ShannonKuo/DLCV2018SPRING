@@ -23,7 +23,7 @@ if debug == 1:
 else:
     num_epochs = 20
 batch_size = 32
-learning_rate = 1e-3
+learning_rate = 1e-2
 output_folder = './output'
 test_output_folder = './test_output'
 img_transform = transforms.Compose([
@@ -130,7 +130,7 @@ def loss_function(recon_x, x, mu, logvar):
     KLD_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
     KLD = torch.sum(KLD_element).mul_(-0.5)
     # KL divergence
-    lambdaKL = 1e-5
+    lambdaKL = 1e-3
     KLD = KLD.mul_(lambdaKL)
     return BCE + KLD
 
@@ -171,7 +171,7 @@ def training(data_loader, file_list):
             # ===================backward====================
             optimizer.zero_grad()
             loss.backward()
-            train_loss += loss.item()
+            train_loss += loss.data[0]
             optimizer.step()
 
             if idx < 10:
@@ -192,19 +192,18 @@ def testing(model, data_loader, file_list):
     if not os.path.exists(test_output_folder):
         os.makedirs(test_output_folder)
     idx = 0
-    with torch.no_grad():
-        for i, img in enumerate(data_loader):
-            if args.cuda:
-                img = Variable(img).cuda()
-            else:
-                img = Variable(img).cpu()
-            output, mu, logvar = model(img)
-            #output = model(img)
-            pic = to_img(output.cpu().data)
-            for j in range(len(pic)):
-                file_path = test_output_folder + '/' + file_list[idx]
-                save_image(pic[j], test_output_folder + '/' + file_list[idx], normalize=True)
-                idx += 1
+    for i, img in enumerate(data_loader):
+        if args.cuda:
+            img = Variable(img).cuda()
+        else:
+            img = Variable(img).cpu()
+        output, mu, logvar = model(img)
+        #output = model(img)
+        pic = to_img(output.cpu().data)
+        for j in range(len(pic)):
+            file_path = test_output_folder + '/' + file_list[idx]
+            save_image(pic[j], test_output_folder + '/' + file_list[idx], normalize=True)
+            idx += 1
 
 if __name__ == '__main__':
     train_data_loader, train_file_list = load_image('./hw4_data/train')
