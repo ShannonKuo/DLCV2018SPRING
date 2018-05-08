@@ -19,9 +19,12 @@ def to_img(x):
     return x
 
 debug = 0
-num_epochs = 2
+if debug == 1:
+    num_epochs = 1
+else:
+    num_epochs = 20
 batch_size = 32
-learning_rate = 1e-3
+learning_rate = 1e-4
 output_folder = './output'
 test_output_folder = './test_output'
 img_transform = transforms.Compose([
@@ -58,7 +61,7 @@ def load_image(folder):
            break
 
     x = [transforms.ToTensor()(i) for i in x]
-    dataloader = DataLoader(x, batch_size=batch_size, shuffle=True)
+    dataloader = DataLoader(x, batch_size=batch_size, shuffle=False)
     print("finish load image")
     return (dataloader, file_list)
 
@@ -94,13 +97,20 @@ class autoencoder(nn.Module):
         else:
             eps = torch.FloatTensor(std.size()).normal_()
         eps = Variable(eps)
-        return eps.mul(std).add_(mu)
+        if self.training():
+            return eps.mul(std).add_(mu)
+        else:
+            return mu
 
     def forward(self, x):
-        mu, logvar = self.encode(x)
-        x = self.reparameterize(mu, logvar)
+        #mu, logvar = self.encode(x)
+        #z = self.reparameterize(mu, logvar)
+        #z = self.decoder(z)
+        #return z, mu, logvar
+        x = self.encoder(x)
+        x = self.conv11(x)
         x = self.decoder(x)
-        return x, mu, logvar
+        return x
 def loss_function(recon_x, x, mu, logvar):
     """
     recon_x: generating images
@@ -114,7 +124,8 @@ def loss_function(recon_x, x, mu, logvar):
     KLD_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
     KLD = torch.sum(KLD_element).mul_(-0.5)
     # KL divergence
-    return BCE + KLD
+    lambdaKL = 1e-5
+    return BCE + KLD.mul_(lambdaKL)
 
 def training(data_loader, file_list):
     print("start training")
@@ -122,6 +133,7 @@ def training(data_loader, file_list):
         model = autoencoder().cuda()
     else:
         model = autoencoder().cpu()
+    model.train()
     #print(summary((3, 64, 64), model))
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
                                 weight_decay=1e-5)
@@ -130,20 +142,32 @@ def training(data_loader, file_list):
         os.makedirs(output_folder)
     for epoch in range(num_epochs):
         idx = 0
+        #id = 0
+        train_loss = 0.0
         for img in data_loader:
             if args.cuda:
                 img = Variable(img).cuda()
             else:
                 img = Variable(img).cpu()
+            img_show = to_img(img.cpu().data)
+            """if not os.path.exists('./tmp'):
+                os.makedirs('./tmp')
+            for i in range(len(img_show)):
+                save_image(img_show[i], './tmp/' + file_list[id], normalize=True)
+                id += 1
+            """
             # ===================forward=====================
-            output, mu, logvar = model(img)
-            loss = loss_function(output, img, mu, logvar)
+            #output, mu, logvar = model(img)
+            output = model(img)
+            #loss = loss_function(output, img, mu, logvar)
+            loss = nn.MSELoss()(output, img)
             # ===================backward====================
             optimizer.zero_grad()
             loss.backward()
+            train_loss += loss.item()
             optimizer.step()
 
-            if epoch % 10 == 0:
+            if epoch == num_epochs - 1:
                 pic = to_img(output.cpu().data)
                 for i in range(len(pic)):
                     file_path = output_folder + '/' + file_list[idx]
@@ -151,25 +175,29 @@ def training(data_loader, file_list):
                     idx += 1
         # ===================log========================
         print('epoch [{}/{}], loss:{:.4f}'.
-                format(epoch+1, num_epochs, loss.data[0]))
+                format(epoch+1, num_epochs, train_loss))
     torch.save(model.state_dict(), './conv_autoencoder.pth')
     return model
 
 def testing(model, data_loader, file_list):
+    print("start test...")
+    model.eval()
     if not os.path.exists(test_output_folder):
         os.makedirs(test_output_folder)
     idx = 0
-    for i, img in enumerate(data_loader):
-        if args.cuda:
-            img = Variable(img).cuda()
-        else:
-            img = Variable(img).cpu()
-        output, mu, logvar = model(img)
-        pic = to_img(output.cpu().data)
-        for j in range(len(pic)):
-            file_path = test_output_folder + '/' + file_list[idx]
-            save_image(pic[j], test_output_folder + '/' + file_list[idx], normalize=True)
-            idx += 1
+    with torch.no_grad():
+        for i, img in enumerate(data_loader):
+            if args.cuda:
+                img = Variable(img).cuda()
+            else:
+                img = Variable(img).cpu()
+            #output, mu, logvar = model(img)
+            output = model(img)
+            pic = to_img(output.cpu().data)
+            for j in range(len(pic)):
+                file_path = test_output_folder + '/' + file_list[idx]
+                save_image(pic[j], test_output_folder + '/' + file_list[idx], normalize=True)
+                idx += 1
 
 if __name__ == '__main__':
     train_data_loader, train_file_list = load_image('./hw4_data/train')
