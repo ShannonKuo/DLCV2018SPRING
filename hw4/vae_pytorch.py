@@ -72,9 +72,9 @@ class autoencoder(nn.Module):
             nn.Conv2d(3, 16, 3, stride=1, padding=2),  # b, 16, 64, 64
             nn.ReLU(True),
             nn.MaxPool2d(2, stride=2),  # b, 16, 32, 32
-            nn.Conv2d(16, 8, 3, stride=1, padding=2),  # b, 8, 32, 32
+            nn.Conv2d(16, 4, 5, stride=1, padding=2),  # b, 8, 32, 32
             nn.ReLU(True),
-            nn.MaxPool2d(2, stride=2)  # b, 8, 17, 17
+            nn.MaxPool2d(2, stride=2)  # b, 4, 16, 16
         )
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(4, 8, 3, stride=2, padding=2),  # b, 8, 16, 16
@@ -84,8 +84,8 @@ class autoencoder(nn.Module):
             nn.ConvTranspose2d(16, 3, 5, stride=1, padding=0),  # b, 3, 64, 64
             nn.Tanh()
         )
-        self.fcn11 = nn.Linear(2312, 1024)
-        self.fcn12 = nn.Linear(2312, 1024)
+        self.fcn11 = nn.Linear(1024, 1024)
+        self.fcn12 = nn.Linear(1024, 1024)
         #self.conv11 = nn.Conv2d(8, 4, 3, stride=2, padding=2) # 4, 8, 8
         #self.conv12 = nn.Conv2d(8, 4, 3, stride=2, padding=2)
 
