@@ -11,6 +11,7 @@ import scipy.misc
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+#print(torch.__version__)
 
 def to_img(x):
     x = 0.5 * (x + 1)
@@ -204,16 +205,17 @@ def testing(model, data_loader, file_list):
         else:
             img = Variable(img).cpu()
         output, mu, logvar = model(img)
-        pic = to_img(output.cpu().data)
         loss = nn.MSELoss()(output, img)
         test_loss += loss.data[0] / len(data_loader)
 
+        pic = to_img(output.cpu().data)
+        input = to_img(img.cpu().data)
         for j in range(len(pic)):
             file_path = test_output_folder + '/' + file_list[idx]
             save_image(pic[j], test_output_folder + '/' + file_list[idx], normalize=True)
             idx += 1
             if choose_cnt < 10:
-                ten_images[choose_cnt] = img[j]
+                ten_images[choose_cnt] = input[j]
                 ten_images[10 + choose_cnt] = pic[j]
                 choose_cnt += 1
 
@@ -228,6 +230,7 @@ def random_generate_img(model):
 
     for i in range(32):
         x = torch.randn(1024)
+        x = Variable(x)
         output = model.random_generate(x)
         pic = to_img(output.cpu().data)
         images.append(pic[0])
