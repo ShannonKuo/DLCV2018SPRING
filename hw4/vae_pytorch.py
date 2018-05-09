@@ -22,7 +22,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 0
+debug = 1
 if debug == 1:
     num_epochs = 3
 else:
@@ -79,26 +79,30 @@ class autoencoder(nn.Module):
         super(autoencoder, self).__init__()
         self.encoder = nn.Sequential(
             nn.Conv2d(3, 16, 3, stride=1, padding=2),  # b, 16, 64, 64
+            nn.BatchNorm2d(16),
             nn.LeakyReLU(True),
             nn.MaxPool2d(2, stride=2),  # b, 16, 32, 32
             nn.Conv2d(16, 4, 5, stride=1, padding=2),  # b, 8, 32, 32
+            nn.BatchNorm2d(4),
             nn.LeakyReLU(True),
             nn.MaxPool2d(2, stride=2)  # b, 4, 16, 16
         )
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(4, 8, 3, stride=2, padding=2),  # b, 8, 16, 16
+            nn.ConvTranspose2d(2, 4, 3, stride=2, padding=2),  # b, 4, 16, 16
+            nn.BatchNorm2d(4),
             nn.LeakyReLU(True),
-            nn.ConvTranspose2d(8, 16, 4, stride=2, padding=0),  # b, 16, 32, 32
+            nn.ConvTranspose2d(4, 8, 4, stride=2, padding=0),  # b, 16, 32, 32
+            nn.BatchNorm2d(8),
             nn.LeakyReLU(True),
-            nn.ConvTranspose2d(16, 3, 5, stride=1, padding=0),  # b, 3, 64, 64
+            nn.ConvTranspose2d(8, 3, 5, stride=1, padding=0),  # b, 3, 64, 64
             nn.Tanh()
         )
-        self.fcn11 = nn.Linear(1024, 1024)
-        self.fcn12 = nn.Linear(1024, 1024)
+        self.fcn11 = nn.Linear(1024, 512)
+        self.fcn12 = nn.Linear(1024, 512)
         #self.conv11 = nn.Conv2d(8, 4, 3, stride=2, padding=2) # 4, 8, 8
         #self.conv12 = nn.Conv2d(8, 4, 3, stride=2, padding=2)
     def random_generate(self, vector):
-        vector = vector.view(-1, 4, 16, 16)
+        vector = vector.view(-1, 2, 16, 16)
         z = self.decoder(vector)
         return z
     def encode(self, x):
@@ -122,7 +126,7 @@ class autoencoder(nn.Module):
     def forward(self, x):
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
-        z = z.view(-1, 4, 16, 16)
+        z = z.view(-1, 2, 16, 16)
         z = self.decoder(z)
         return z, mu, logvar
         #x = self.encoder(x)
