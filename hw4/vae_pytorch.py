@@ -23,7 +23,7 @@ if debug == 1:
 else:
     num_epochs = 20
 batch_size = 32
-learning_rate = 1e-2
+learning_rate = 1e-4
 output_folder = './output'
 test_output_folder = './test_output'
 img_transform = transforms.Compose([
@@ -70,17 +70,17 @@ class autoencoder(nn.Module):
         super(autoencoder, self).__init__()
         self.encoder = nn.Sequential(
             nn.Conv2d(3, 16, 3, stride=1, padding=2),  # b, 16, 64, 64
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.MaxPool2d(2, stride=2),  # b, 16, 32, 32
             nn.Conv2d(16, 4, 5, stride=1, padding=2),  # b, 8, 32, 32
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.MaxPool2d(2, stride=2)  # b, 4, 16, 16
         )
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(4, 8, 3, stride=2, padding=2),  # b, 8, 16, 16
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.ConvTranspose2d(8, 16, 4, stride=2, padding=0),  # b, 16, 32, 32
-            nn.ReLU(True),
+            nn.LeakyReLU(True),
             nn.ConvTranspose2d(16, 3, 5, stride=1, padding=0),  # b, 3, 64, 64
             nn.Tanh()
         )
@@ -130,7 +130,7 @@ def loss_function(recon_x, x, mu, logvar):
     KLD_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
     KLD = torch.sum(KLD_element).mul_(-0.5)
     # KL divergence
-    lambdaKL = 1e-3
+    lambdaKL = 1e-7
     KLD = KLD.mul_(lambdaKL)
     return BCE + KLD
 
@@ -177,7 +177,7 @@ def training(data_loader, file_list):
             if idx < 10:
                 pic = to_img(output.cpu().data)
                 for i in range(len(pic)):
-                    file_path = output_folder + '/' + file_list[idx]
+                    file_path = output_folder + '/' + file_list[idx] 
                     save_image(pic[i], output_folder + '/' + file_list[idx], normalize=True)
                     idx += 1
         # ===================log========================
