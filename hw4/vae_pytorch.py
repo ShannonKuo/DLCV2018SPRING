@@ -21,7 +21,7 @@ debug = 0
 if debug == 1:
     num_epochs = 1
 else:
-    num_epochs = 20
+    num_epochs = 3
 batch_size = 32
 learning_rate = 1e-4
 output_folder = './output'
@@ -59,7 +59,7 @@ def load_image(folder):
         if (i > 10 and debug == 1):
            break
 
-    x = [transforms.ToTensor()(i) for i in x]
+    x = [img_transform(i) for i in x]
     dataloader = DataLoader(x, batch_size=batch_size, shuffle=False)
     print("finish load image")
     return (dataloader, file_list)
