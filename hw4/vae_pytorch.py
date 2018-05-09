@@ -22,7 +22,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 1
+debug = 0
 train = 1
 if debug == 1:
     num_epochs = 1
@@ -80,34 +80,34 @@ class autoencoder(nn.Module):
     def __init__(self):
         super(autoencoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(3, 128, 3, stride=4, padding=1),  # b, 128, 32, 32
+            nn.Conv2d(3, 64, 4, stride=2, padding=1),  # b, 128, 32, 32
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(True),
+            nn.Conv2d(64, 128, 4, stride=2, padding=1),  # b, 256, 16, 16
             nn.BatchNorm2d(128),
             nn.LeakyReLU(True),
-            nn.Conv2d(128, 256, 3, stride=4, padding=1),  # b, 256, 16, 16
+            nn.Conv2d(128, 256, 4, stride=2, padding=1),  # b, 512, 8, 8
             nn.BatchNorm2d(256),
-            nn.LeakyReLU(True),
-            nn.Conv2d(256, 512, 3, stride=4, padding=1),  # b, 512, 8, 8
-            nn.BatchNorm2d(512),
             nn.LeakyReLU(True),
         )
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(512, 256, 3, stride=4, padding=0),  # b, 256, 16, 16
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(True),
-            nn.ConvTranspose2d(256, 128, 3, stride=4, padding=1),  # b, 128, 32, 32
+            nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1),  # b, 256, 16, 16
             nn.BatchNorm2d(128),
             nn.LeakyReLU(True),
-            nn.ConvTranspose2d(128, 3, 2, stride=8, padding=1),  # b, 3, 64, 64
+            nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1),  # b, 128, 32, 32
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(True),
+            nn.ConvTranspose2d(64, 3, 4, stride=2, padding=1),  # b, 3, 64, 64
             nn.Tanh()
         )
-        self.fcn11 = nn.Linear(512 * 1 * 1, 512)
-        self.fcn12 = nn.Linear(512 * 1 * 1, 512)
-        self.fcn2 = nn.Linear(512, 512 * 1 * 1)
+        self.fcn11 = nn.Linear(256 * 8 * 8, 512)
+        self.fcn12 = nn.Linear(256 * 8 * 8, 512)
+        self.fcn2 = nn.Linear(512, 256 * 8 * 8)
         #self.conv11 = nn.Conv2d(8, 4, 3, stride=2, padding=2) # 4, 8, 8
         #self.conv12 = nn.Conv2d(8, 4, 3, stride=2, padding=2)
     def random_generate(self, z):
         z = self.fcn2(z)
-        z = z.view(-1, 512, 1, 1)
+        z = z.view(-1, 256, 8, 8)
         z = self.decoder(z)
         return z
     def encode(self, x):
@@ -132,7 +132,7 @@ class autoencoder(nn.Module):
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
         z = self.fcn2(z)
-        z = z.view(-1, 512, 1, 1)
+        z = z.view(-1, 256, 8, 8)
         z = self.decoder(z)
         return z, mu, logvar
         #x = self.encoder(x)
