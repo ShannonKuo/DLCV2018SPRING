@@ -24,7 +24,7 @@ if debug == 1:
 else:
     num_epochs = 30
 batch_size = 32
-learning_rate = 1e-4
+learning_rate = 1e-5
 output_folder = './output'
 test_output_folder = './test_output'
 output_fig_folder = './output_fig'
@@ -138,11 +138,10 @@ def loss_function(recon_x, x, mu, logvar):
     KLD_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
     KLD = torch.sum(KLD_element).mul_(-0.5).div_(batch_size)
     # KL divergence
-    lambdaKL = 1e-7
+    lambdaKL = 1e-6
     KLD = KLD.mul_(lambdaKL)
     MSEloss.append(MSE.data[0])
     KLDloss.append(KLD.data[0])
-
     return MSE + KLD
 
 def training(data_loader, file_list):
