@@ -23,6 +23,7 @@ def to_img(x):
     return x
 
 debug = 1
+train = 1
 if debug == 1:
     num_epochs = 1
 else:
@@ -79,32 +80,35 @@ class autoencoder(nn.Module):
     def __init__(self):
         super(autoencoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(3, 16, 3, stride=1, padding=2),  # b, 16, 64, 64
-            nn.BatchNorm2d(16),
+            nn.Conv2d(3, 128, 3, stride=2, padding=1),  # b, 128, 32, 32
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(True),
-            nn.MaxPool2d(2, stride=2),  # b, 16, 32, 32
-            nn.Conv2d(16, 4, 5, stride=1, padding=2),  # b, 8, 32, 32
-            nn.BatchNorm2d(4),
+            nn.Conv2d(128, 256, 3, stride=2, padding=1),  # b, 256, 16, 16
+            nn.BatchNorm2d(256),
             nn.LeakyReLU(True),
-            nn.MaxPool2d(2, stride=2)  # b, 4, 16, 16
+            nn.Conv2d(256, 512, 3, stride=2, padding=1),  # b, 512, 8, 8
+            nn.BatchNorm2d(512),
+            nn.LeakyReLU(True),
         )
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(2, 4, 3, stride=2, padding=2),  # b, 4, 16, 16
-            nn.BatchNorm2d(4),
+            nn.ConvTranspose2d(512, 256, 3, stride=2, padding=0),  # b, 256, 16, 16
+            nn.BatchNorm2d(256),
             nn.LeakyReLU(True),
-            nn.ConvTranspose2d(4, 8, 4, stride=2, padding=0),  # b, 16, 32, 32
-            nn.BatchNorm2d(8),
+            nn.ConvTranspose2d(256, 128, 3, stride=2, padding=1),  # b, 128, 32, 32
+            nn.BatchNorm2d(128),
             nn.LeakyReLU(True),
-            nn.ConvTranspose2d(8, 3, 5, stride=1, padding=0),  # b, 3, 64, 64
+            nn.ConvTranspose2d(128, 3, 2, stride=2, padding=1),  # b, 3, 64, 64
             nn.Tanh()
         )
-        self.fcn11 = nn.Linear(1024, 512)
-        self.fcn12 = nn.Linear(1024, 512)
+        self.fcn11 = nn.Linear(512 * 8 * 8, 512)
+        self.fcn12 = nn.Linear(512 * 8 * 8, 512)
+        self.fcn2 = nn.Linear(512, 512 * 8 * 8)
         #self.conv11 = nn.Conv2d(8, 4, 3, stride=2, padding=2) # 4, 8, 8
         #self.conv12 = nn.Conv2d(8, 4, 3, stride=2, padding=2)
-    def random_generate(self, vector):
-        vector = vector.view(-1, 2, 16, 16)
-        z = self.decoder(vector)
+    def random_generate(self, z):
+        z = self.fcn2(z)
+        z = z.view(-1, 512, 8, 8)
+        z = self.decoder(z)
         return z
     def encode(self, x):
         x = self.encoder(x)
@@ -127,7 +131,8 @@ class autoencoder(nn.Module):
     def forward(self, x):
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
-        z = z.view(-1, 2, 16, 16)
+        z = self.fcn2(z)
+        z = z.view(-1, 512, 8, 8)
         z = self.decoder(z)
         return z, mu, logvar
         #x = self.encoder(x)
@@ -228,7 +233,7 @@ def testing(model, data_loader, file_list):
 
     out = torchvision.utils.make_grid(ten_images, nrow=10)
     save_image(out, output_fig_folder + '/fig1_3.jpg', normalize=True)
-
+    print("test_loss: ", test_loss)
 def random_generate_img(model):
     model.eval()
     images = []
@@ -236,7 +241,7 @@ def random_generate_img(model):
         os.makedirs(output_fig_folder)
 
     for i in range(32):
-        x = torch.randn(1024)
+        x = torch.randn(512)
 
         if args.cuda:
             x = Variable(x).cuda()
@@ -267,19 +272,22 @@ def plot_loss():
     line, = plt.plot(t, KLDloss, lw=2)
     plt.xlabel('steps')
     plt.ylabel('KLD_loss')
-    plt.title('KDL_loss vs steps')
+    plt.title('KLD_loss vs steps')
     plt.ylim(0,1e4)
 
     plt.savefig(output_fig_folder + '/fig1_2.jpg')
     plt.close()
 
 if __name__ == '__main__':
-    torch.manual_seed(999)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(999)
-    train_data_loader, train_file_list = load_image('./hw4_data/train')
+    if train == 1:
+        torch.manual_seed(999)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(999)
+        train_data_loader, train_file_list = load_image('./hw4_data/train')
+        model = training(train_data_loader, train_file_list)
+    else:
+        model = torch.load('./conv_autoencoder.pth')
     test_data_loader, test_file_list = load_image('./hw4_data/test')
-    model = training(train_data_loader, train_file_list)
     testing(model, test_data_loader, test_file_list)
     random_generate_img(model)
     plot_loss()
