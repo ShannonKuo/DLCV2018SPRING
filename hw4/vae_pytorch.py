@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('Agg')
 import torch
 import argparse
 import torchvision
@@ -13,13 +15,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 #print(torch.__version__)
 
+
 def to_img(x):
     x = 0.5 * (x + 1)
     x = x.clamp(0, 1)
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 1
+debug = 0
 if debug == 1:
     num_epochs = 3
 else:
@@ -230,7 +233,11 @@ def random_generate_img(model):
 
     for i in range(32):
         x = torch.randn(1024)
-        x = Variable(x)
+
+        if args.cuda:
+            x = Variable(x).cuda()
+        else:
+            x = Variable(x).cpu()
         output = model.random_generate(x)
         pic = to_img(output.cpu().data)
         images.append(pic[0])
