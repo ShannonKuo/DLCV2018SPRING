@@ -24,11 +24,12 @@ def to_img(x):
 
 debug = 0
 if debug == 1:
-    num_epochs = 3
+    num_epochs = 1
 else:
     num_epochs = 30
 batch_size = 32
 learning_rate = 1e-5
+lambdaKL = 1e-5
 output_folder = './output'
 test_output_folder = './test_output'
 output_fig_folder = './output_fig'
@@ -142,10 +143,9 @@ def loss_function(recon_x, x, mu, logvar):
     KLD_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
     KLD = torch.sum(KLD_element).mul_(-0.5).div_(batch_size)
     # KL divergence
-    lambdaKL = 1e-6
+    KLDloss.append(KLD.data[0])
     KLD = KLD.mul_(lambdaKL)
     MSEloss.append(MSE.data[0])
-    KLDloss.append(KLD.data[0])
     return MSE + KLD
 
 def training(data_loader, file_list):
@@ -250,21 +250,21 @@ def plot_loss():
         os.makedirs(output_fig_folder)
 
     fig=plt.figure(figsize=(15, 5))
-    t = np.arange(0.0, num_epochs, 1.0)
+    t = np.arange(0.0, len(MSEloss), 1.0)
     fig.add_subplot(1, 2, 1)
     line, = plt.plot(t, MSEloss, lw=2)
-    plt.xlabel('epochs')
+    plt.xlabel('steps')
     plt.ylabel('MSE_loss')
-    plt.title('MSE_loss vs epochs')
-    plt.ylim(-2,2)
+    plt.title('MSE_loss vs steps')
+    plt.ylim(0,0.5)
 
-    t = np.arange(0.0, num_epochs, 1.0)
+    t = np.arange(0.0, len(KLDloss), 1.0)
     fig.add_subplot(1, 2, 2)
     line, = plt.plot(t, KLDloss, lw=2)
-    plt.xlabel('epochs')
+    plt.xlabel('steps')
     plt.ylabel('KLD_loss')
-    plt.title('KDL_loss vs epochs')
-    plt.ylim(-2,2)
+    plt.title('KDL_loss vs steps')
+    plt.ylim(0,1e4)
 
     plt.savefig(output_fig_folder + '/fig1_2.jpg')
     plt.close()
