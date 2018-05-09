@@ -31,9 +31,9 @@ else:
 batch_size = 32
 learning_rate = 1e-5
 lambdaKL = 1e-5
-output_folder = './output'
-test_output_folder = './test_output'
-output_fig_folder = './output_fig'
+output_folder = './output_1e-5'
+test_output_folder = './test_output_1e-5'
+output_fig_folder = './output_fig_1e-5'
 MSEloss = []
 KLDloss = []
 
@@ -197,6 +197,8 @@ def training(data_loader, file_list):
         # ===================log========================
         print('epoch [{}/{}], loss:{:.4f}'.
                 format(epoch+1, num_epochs, train_loss))
+
+        random_generate_img(model)
     torch.save(model.state_dict(), './conv_autoencoder.pth')
     return model
 
@@ -273,7 +275,7 @@ def plot_loss():
     plt.xlabel('steps')
     plt.ylabel('KLD_loss')
     plt.title('KLD_loss vs steps')
-    plt.ylim(0,1e4)
+    plt.ylim(0,1e3)
 
     plt.savefig(output_fig_folder + '/fig1_2.jpg')
     plt.close()
