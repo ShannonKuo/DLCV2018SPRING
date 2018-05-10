@@ -156,8 +156,10 @@ def training(data_loader, file_list):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     all_loss = []
-    fixed_noise = Variable(torch.randn(batch_size, nz, 1, 1)).cpu()
-
+    if args.cuda:
+        fixed_noise = Variable(torch.randn(batch_size, nz, 1, 1)).cuda()
+    else:
+        fixed_noise = Variable(torch.randn(batch_size, nz, 1, 1)).cpu()
     for epoch in range(num_epochs):
         idx = 0
         train_loss = 0.0
@@ -185,7 +187,7 @@ def training(data_loader, file_list):
             #log(1-D(G(z)))
             if args.cuda:
                 noise = Variable(torch.randn(vector_size, nz, 1, 1)).cuda()
-            else
+            else:
                 noise = Variable(torch.randn(vector_size, nz, 1, 1)).cpu()
 
             fake_img = generator(noise)
