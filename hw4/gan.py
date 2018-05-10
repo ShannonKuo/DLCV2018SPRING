@@ -180,7 +180,6 @@ def training(data_loader, file_list):
             else:
                 real_label = Variable(torch.ones(vector_size)).cpu()
             lossD_real = nn.BCELoss()(real_predict, real_label)
-            lossD_real.backward()
             D_x = real_predict.mean().data[0]
 
             #log(1-D(G(z)))
@@ -198,9 +197,9 @@ def training(data_loader, file_list):
                 fake_label = Variable(torch.zeros(vector_size)).cpu()
 
             lossD_fake = nn.BCELoss()(fake_predict, fake_label)
-            lossD_fake.backward()
             D_G_z1 = fake_predict.mean().data[0]
             lossD = lossD_real + lossD_fake
+            lossD.backward()
             optimizerD.step()
             ############################
             # (2) Update G network: maximize log(D(G(z)))
@@ -211,6 +210,8 @@ def training(data_loader, file_list):
             lossG = nn.BCELoss()(output, real_label)
             lossG.backward()
             D_G_z2 = output.mean().data[0]
+            optimizerG.step()
+
             print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
                  % (epoch + 1, num_epochs, i, len(data_loader),
                  lossD.data[0], lossG.data[0], D_x, D_G_z1, D_G_z2))
