@@ -68,6 +68,13 @@ def load_image(folder):
     print("finish load image")
     return (dataloader, file_list)
 
+def weights_init(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        m.weight.data.normal_(0.0, 0.02)
+    elif classname.find('BatchNorm') != -1:
+        m.weight.data.normal_(1.0, 0.02)
+        m.bias.data.fill_(0)
 
 class GAN_generator(nn.Module):
     def __init__(self):
@@ -133,13 +140,16 @@ def training(data_loader, file_list):
         generator = GAN_generator().cuda()
     else:
         generator = GAN_generator().cpu()
-    
+    generator.apply(weights_init)
+
     if args.cuda:
         discriminator = GAN_discriminator().cuda()
     else:
         discriminator = GAN_discriminator().cpu()
+    discriminator.apply(weights_init)
 
     generator.train()
+    discriminator.train()
     optimizerG = torch.optim.Adam(generator.parameters(), lr=learning_rate, betas=(0.5,0.999))
     optimizerD = torch.optim.Adam(discriminator.parameters(), lr=learning_rate, betas=(0.5,0.999))
 
@@ -155,42 +165,47 @@ def training(data_loader, file_list):
             ############################
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
             ###########################
-            generator.zero_grad()
+            #log(D(x))
+            discriminator.zero_grad()
 
             if args.cuda:
                 img = Variable(img).cuda()
             else:
                 img = Variable(img).cpu()
             real_predict = discriminator(img)
+            vector_size = real_predict.shape[0]
 
             if args.cuda:
-                real_label = Variable(torch.ones(real_predict.shape[0])).cuda()
+                real_label = Variable(torch.ones(vector_size)).cuda()
             else:
-                real_label = Variable(torch.ones(real_predict.shape[0])).cpu()
-            #real_label = torch.full((batch_size,), 1)
+                real_label = Variable(torch.ones(vector_size)).cpu()
             lossD_real = nn.BCELoss()(real_predict, real_label)
             lossD_real.backward()
             D_x = real_predict.mean().data[0]
 
-            noise = Variable(torch.randn(real_predict.shape[0], nz, 1, 1)).cpu()
-            
+            #log(1-D(G(z)))
+            if args.cuda:
+                noise = Variable(torch.randn(vector_size, nz, 1, 1)).cuda()
+            else
+                noise = Variable(torch.randn(vector_size, nz, 1, 1)).cpu()
+
             fake_img = generator(noise)
             fake_predict = discriminator(fake_img.detach())
 
             if args.cuda:
-                fake_label = Variable(torch.zeros(real_predict.shape[0])).cuda()
+                fake_label = Variable(torch.zeros(vector_size)).cuda()
             else:
-                fake_label = Variable(torch.zeros(real_predict.shape[0])).cpu()
+                fake_label = Variable(torch.zeros(vector_size)).cpu()
 
             lossD_fake = nn.BCELoss()(fake_predict, fake_label)
             lossD_fake.backward()
             D_G_z1 = fake_predict.mean().data[0]
-            optimizerD.step()
             lossD = lossD_real + lossD_fake
+            optimizerD.step()
             ############################
             # (2) Update G network: maximize log(D(G(z)))
             ###########################
-            discriminator.zero_grad()
+            generator.zero_grad()
             output = discriminator(fake_img) 
 
             lossG = nn.BCELoss()(output, real_label)
@@ -199,7 +214,7 @@ def training(data_loader, file_list):
             print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
                  % (epoch + 1, num_epochs, i, len(data_loader),
                  lossD.data[0], lossG.data[0], D_x, D_G_z1, D_G_z2))
-            if i % 10 == 0:
+            if idx < 32:
                 fake_img = generator(fixed_noise)
                 pic = to_img(fake_img.cpu().data)
                 for i in range(len(pic)):
@@ -207,11 +222,9 @@ def training(data_loader, file_list):
                     save_image(pic[i], output_folder + '/' + file_list[idx], normalize=True)
                     idx += 1
         # ===================log========================
-        """
-    torch.save(generator.state_dict(), './conv_autoencoder.pth')
-    torch.save(discriminator.state_dict(), './conv_autoencoder.pth')
+    torch.save(generator.state_dict(), './gan_generator.pth')
+    torch.save(discriminator.state_dict(), './gan_discriminator.pth')
     return generator, discriminator
-"""
 
 def plot_loss():
     if not os.path.exists(output_fig_folder):
@@ -243,8 +256,9 @@ if __name__ == '__main__':
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(999)
         train_data_loader, train_file_list = load_image('./hw4_data/train')
-        model = training(train_data_loader, train_file_list)
+        model_G, model_D = training(train_data_loader, train_file_list)
     else:
-        model = torch.load('./conv_autoencoder.pth')
+        model_G = torch.load('./gan_generator.pth')
+        model_D = torch.load('./gan_discriminator.pth')
     #random_generate_img(model)
     #plot_loss()
