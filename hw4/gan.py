@@ -13,7 +13,6 @@ import scipy.misc
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-#print(torch.__version__)
 
 
 def to_img(x):
@@ -25,20 +24,20 @@ def to_img(x):
 debug = 0
 train = 1
 if debug == 1:
-    num_epochs = 1
+    num_epochs = 3
 else:
-    num_epochs = 30
+    num_epochs = 50
 batch_size = 32
 learning_rate = 1e-5
-lambdaKL = 1e-5
+
 nz = 100
 ngf = 64
 ndf = 64
 nc = 3
 output_folder = './output_gan'
-#output_fig_folder = './output_fig'
-MSEloss = []
-KLDloss = []
+all_loss_G = []
+all_loss_D = []
+all_accuracy = []
 
 img_transform = transforms.Compose([
     transforms.ToTensor(),
@@ -49,7 +48,6 @@ parser = argparse.ArgumentParser(description='GAN')
 args = parser.parse_args()
 args.cuda = torch.cuda.is_available()
 
-#device = torch.device("cuda" if args.cuda else "cpu")
 
 def load_image(folder):
     print("load_image...")
@@ -155,14 +153,9 @@ def training(data_loader, file_list):
 
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
+    
     all_loss = []
-    if args.cuda:
-        fixed_noise = Variable(torch.randn(batch_size, nz, 1, 1)).cuda()
-    else:
-        fixed_noise = Variable(torch.randn(batch_size, nz, 1, 1)).cpu()
     for epoch in range(num_epochs):
-        idx = 0
-        train_loss = 0.0
         for i, img in enumerate(data_loader):
             ############################
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
@@ -202,7 +195,9 @@ def training(data_loader, file_list):
             D_G_z1 = fake_predict.mean().data[0]
             lossD = lossD_real + lossD_fake
             lossD.backward()
+            all_loss_D.append(lossD.data[0])
             optimizerD.step()
+
             ############################
             # (2) Update G network: maximize log(D(G(z)))
             ###########################
@@ -211,47 +206,51 @@ def training(data_loader, file_list):
 
             lossG = nn.BCELoss()(output, real_label)
             lossG.backward()
+            all_loss_G.append(lossG.data[0])
             D_G_z2 = output.mean().data[0]
             optimizerG.step()
 
+            # ===================log========================
             print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
                  % (epoch + 1, num_epochs, i, len(data_loader),
                  lossD.data[0], lossG.data[0], D_x, D_G_z1, D_G_z2))
-            if idx < 32:
-                fake_img = generator(fixed_noise)
-                pic = to_img(fake_img.cpu().data)
-                for i in range(len(pic)):
-                    file_path = output_folder + '/' + file_list[idx] 
-                    save_image(pic[i], output_folder + '/' + file_list[idx], normalize=True)
-                    idx += 1
-        # ===================log========================
+
+        generate_img(generator)
+        plot_loss()
+
     torch.save(generator.state_dict(), './gan_generator.pth')
     torch.save(discriminator.state_dict(), './gan_discriminator.pth')
     return generator, discriminator
 
 def plot_loss():
-    if not os.path.exists(output_fig_folder):
-        os.makedirs(output_fig_folder)
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
 
     fig=plt.figure(figsize=(15, 5))
-    t = np.arange(0.0, len(MSEloss), 1.0)
+    t = np.arange(0.0, len(all_loss_D), 1.0)
     fig.add_subplot(1, 2, 1)
-    line, = plt.plot(t, MSEloss, lw=2)
+    line, = plt.plot(t, all_loss_D, lw=2)
     plt.xlabel('steps')
-    plt.ylabel('MSE_loss')
-    plt.title('MSE_loss vs steps')
-    plt.ylim(0,0.5)
+    plt.ylabel('Discriminator_loss')
+    plt.title('Discriminator_loss vs steps')
 
-    t = np.arange(0.0, len(KLDloss), 1.0)
+    t = np.arange(0.0, len(all_loss_G), 1.0)
     fig.add_subplot(1, 2, 2)
-    line, = plt.plot(t, KLDloss, lw=2)
+    line, = plt.plot(t, all_loss_G, lw=2)
     plt.xlabel('steps')
-    plt.ylabel('KLD_loss')
-    plt.title('KDL_loss vs steps')
-    plt.ylim(0,1e4)
+    plt.ylabel('Generator_loss')
+    plt.title('Generator_loss vs steps')
 
-    plt.savefig(output_fig_folder + '/fig1_2.jpg')
+    plt.savefig(output_folder + '/fig2_2.jpg')
     plt.close()
+
+def generate_img(generator):
+    noise = Variable(torch.randn(32, nz, 1, 1)).cuda()
+    fake_img = generator(noise)
+    pic = to_img(fake_img.cpu().data)
+    out = torchvision.utils.make_grid(pic, nrow=8)
+    save_image(out, output_folder + '/fig2_3.jpg', normalize=True)
+
 
 if __name__ == '__main__':
     if train == 1:
@@ -263,5 +262,5 @@ if __name__ == '__main__':
     else:
         model_G = torch.load('./gan_generator.pth')
         model_D = torch.load('./gan_discriminator.pth')
-    #random_generate_img(model)
-    #plot_loss()
+    plot_loss()
+    generate_img(model_G)

@@ -32,7 +32,7 @@ train = 1
 if debug == 1:
     num_epochs = 3
 else:
-    num_epochs = 30
+    num_epochs = 50
 batch_size = 32
 learning_rate = float(1e-5)
 MSEloss = []
@@ -268,8 +268,8 @@ def random_generate_img(model):
         #r = np.random.normal(0.0, 1.0, 512)
         #print(r)
 
-        for i in range(512):
-            x[i] = x[i] / 10
+        #for i in range(512):
+        #    x[i] = x[i] / 10
         if args.cuda:
             x = Variable(x).cuda()
         else:
