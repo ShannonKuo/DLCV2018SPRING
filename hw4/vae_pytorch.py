@@ -1,13 +1,18 @@
 import matplotlib
 matplotlib.use('Agg')
+
+import sys
+import csv
 import torch
 import argparse
 import torchvision
 from torch import nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
+from torch.distributions import Normal
 from torchvision import transforms
 from torchvision.utils import save_image
+from sklearn.manifold import TSNE
 import torchvision.transforms.functional as F
 import scipy.misc
 import os
@@ -25,36 +30,34 @@ def to_img(x):
 debug = 0
 train = 1
 if debug == 1:
-    num_epochs = 1
+    num_epochs = 3
 else:
     num_epochs = 30
 batch_size = 32
-learning_rate = 1e-5
-lambdaKL = 1e-5
-output_folder = './output_1e-5'
-test_output_folder = './test_output_1e-5'
-output_fig_folder = './output_fig_1e-5'
+learning_rate = float(1e-5)
 MSEloss = []
 KLDloss = []
+latent_spaces = []
+nz = 512
+ngf = 64
+ndf = 64
+nc = 3
 
 img_transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
 parser = argparse.ArgumentParser(description='VAE Example')
-parser.add_argument('--batch-size', type=int, default=128, metavar='N',
-                    help='input batch size for training (default: 128)')
-parser.add_argument('--epochs', type=int, default=10, metavar='N',
-                    help='number of epochs to train (default: 10)')
-parser.add_argument('--no-cuda', action='store_true', default=False,
-                    help='enables CUDA training')
-parser.add_argument('--seed', type=int, default=1, metavar='S',
-                    help='random seed (default: 1)')
-parser.add_argument('--log-interval', type=int, default=10, metavar='N',
-                    help='how many batches to wait before logging training status')
 
+parser.add_argument('--lambdaKL', type=float, default=1e-5, metavar='N',
+                    help='lambdaKL (default: 1e-5)')
 args = parser.parse_args()
-args.cuda = not args.no_cuda and torch.cuda.is_available()
+args.cuda = torch.cuda.is_available()
+
+lambdaKL = args.lambdaKL
+output_folder = './output_' + str(args.lambdaKL)
+test_output_folder = './test_output_' + str(args.lambdaKL)
+output_fig_folder = './output_fig_' + str(args.lambdaKL)
 
 #device = torch.device("cuda" if args.cuda else "cpu")
 
@@ -80,34 +83,48 @@ class autoencoder(nn.Module):
     def __init__(self):
         super(autoencoder, self).__init__()
         self.encoder = nn.Sequential(
-            nn.Conv2d(3, 64, 4, stride=2, padding=1),  # b, 128, 32, 32
-            nn.BatchNorm2d(64),
-            nn.LeakyReLU(True),
-            nn.Conv2d(64, 128, 4, stride=2, padding=1),  # b, 256, 16, 16
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(True),
-            nn.Conv2d(128, 256, 4, stride=2, padding=1),  # b, 512, 8, 8
-            nn.BatchNorm2d(256),
-            nn.LeakyReLU(True),
+            #input is (nc) x 64 x 64
+            nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ndf) x 32 x 32
+            nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ndf * 2),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            # state size. (ndf*4) x 8 x 8
+            nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ndf * 8),
+            nn.LeakyReLU(0.2, inplace=True),
         )
+
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(256, 128, 4, stride=2, padding=1),  # b, 256, 16, 16
-            nn.BatchNorm2d(128),
-            nn.LeakyReLU(True),
-            nn.ConvTranspose2d(128, 64, 4, stride=2, padding=1),  # b, 128, 32, 32
-            nn.BatchNorm2d(64),
-            nn.LeakyReLU(True),
-            nn.ConvTranspose2d(64, 3, 4, stride=2, padding=1),  # b, 3, 64, 64
+            # input is Z, going into a convolution
+            # state size. (ngf*8) x 4 x 4
+            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf * 4),
+            nn.ReLU(True),
+            # state size. (ngf*4) x 8 x 8
+            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf * 2),
+            nn.ReLU(True),
+            # state size. (ngf*2) x 16 x 16
+            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf),
+            nn.ReLU(True),
+            # state size. (ngf) x 32 x 32
+            nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
             nn.Tanh()
+            # state size. (nc) x 64 x 64
         )
-        self.fcn11 = nn.Linear(256 * 8 * 8, 512)
-        self.fcn12 = nn.Linear(256 * 8 * 8, 512)
-        self.fcn2 = nn.Linear(512, 256 * 8 * 8)
-        #self.conv11 = nn.Conv2d(8, 4, 3, stride=2, padding=2) # 4, 8, 8
-        #self.conv12 = nn.Conv2d(8, 4, 3, stride=2, padding=2)
+
+        self.fcn11 = nn.Linear(ndf * 8 * 4 * 4, 512)
+        self.fcn12 = nn.Linear(ndf * 8 * 4 * 4, 512)
+        self.fcn2 = nn.Linear(512, ndf * 8 * 4 * 4)
+        
     def random_generate(self, z):
         z = self.fcn2(z)
-        z = z.view(-1, 256, 8, 8)
+        z = z.view(-1, ndf * 8, 4, 4)
         z = self.decoder(z)
         return z
     def encode(self, x):
@@ -123,16 +140,18 @@ class autoencoder(nn.Module):
         else:
             eps = torch.FloatTensor(std.size()).normal_()
         eps = Variable(eps)
-        if self.training:
+        if training_testing == 'training':
             return eps.mul(std).add_(mu)
         else:
+            for i in range(len(mu.data.cpu())):
+                latent_spaces.append(mu.data.cpu().numpy()[i])
             return mu
 
     def forward(self, x):
         mu, logvar = self.encode(x)
         z = self.reparameterize(mu, logvar)
         z = self.fcn2(z)
-        z = z.view(-1, 256, 8, 8)
+        z = z.view(-1, ndf * 8, 4, 4)
         z = self.decoder(z)
         return z, mu, logvar
         #x = self.encoder(x)
@@ -150,7 +169,7 @@ def loss_function(recon_x, x, mu, logvar):
     MSE = criterion(recon_x, x)  # mse loss
     # loss = 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     KLD_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
-    KLD = torch.sum(KLD_element).mul_(-0.5).div_(batch_size)
+    KLD = torch.sum(KLD_element).mul_(-0.5)#.div_(batch_size)
     # KL divergence
     KLDloss.append(KLD.data[0])
     KLD = KLD.mul_(lambdaKL)
@@ -199,6 +218,7 @@ def training(data_loader, file_list):
                 format(epoch+1, num_epochs, train_loss))
 
         random_generate_img(model)
+        plot_loss()
     torch.save(model.state_dict(), './conv_autoencoder.pth')
     return model
 
@@ -236,6 +256,7 @@ def testing(model, data_loader, file_list):
     out = torchvision.utils.make_grid(ten_images, nrow=10)
     save_image(out, output_fig_folder + '/fig1_3.jpg', normalize=True)
     print("test_loss: ", test_loss)
+
 def random_generate_img(model):
     model.eval()
     images = []
@@ -244,7 +265,11 @@ def random_generate_img(model):
 
     for i in range(32):
         x = torch.randn(512)
+        #r = np.random.normal(0.0, 1.0, 512)
+        #print(r)
 
+        for i in range(512):
+            x[i] = x[i] / 10
         if args.cuda:
             x = Variable(x).cuda()
         else:
@@ -275,21 +300,43 @@ def plot_loss():
     plt.xlabel('steps')
     plt.ylabel('KLD_loss')
     plt.title('KLD_loss vs steps')
-    plt.ylim(0,1e3)
+    #plt.ylim(0,20000)
 
     plt.savefig(output_fig_folder + '/fig1_2.jpg')
     plt.close()
+
+def calculate_tsne():
+    color = []
+    with open('./hw4_data/test.csv', newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for i, row in enumerate(reader):
+            color.append(row['Male'])
+            if debug == 1 and i > 10:
+                break;
+    color = np.array(color)
+    print(len(latent_spaces))
+    tsne = TSNE(n_components=2, init='pca', random_state=0)
+    Y = tsne.fit_transform(latent_spaces)
+    #ax = fig.add_subplot(2, 5, 10)
+    plt.scatter(Y[:, 0], Y[:, 1], s=5, c=color, cmap=plt.cm.Spectral)
+    plt.title("t-SNE")
+    plt.savefig(output_fig_folder + '/fig1_5.jpg')
+    plt.close()
+
 
 if __name__ == '__main__':
     if train == 1:
         torch.manual_seed(999)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(999)
+        training_testing = 'training'
         train_data_loader, train_file_list = load_image('./hw4_data/train')
         model = training(train_data_loader, train_file_list)
     else:
         model = torch.load('./conv_autoencoder.pth')
+    training_testing = 'testing'
     test_data_loader, test_file_list = load_image('./hw4_data/test')
     testing(model, test_data_loader, test_file_list)
     random_generate_img(model)
     plot_loss()
+    calculate_tsne()
