@@ -67,7 +67,6 @@ def load_image(folder, csv_path):
     label = label[1:, 8: 9]
     if debug == 1:
         label = label[0: 12, :]
-
     label = torch.from_numpy(label).type(torch.FloatTensor)
     data = [(img_transform(x[i]), label[i]) for i in range(len(x))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
@@ -133,13 +132,17 @@ class ACGAN_discriminator(nn.Module):
             nn.BatchNorm2d(ndf * 8),
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*8) x 4 x 4
-            nn.Conv2d(ndf * 8, 1 + nl, 4, 1, 0, bias=False),
-            nn.Sigmoid()
         )
+        self.fc1 = nn.Linear(ndf * 8 * 4 * 4, 1)
+        self.fc2 = nn.Linear(ndf * 8 * 4 * 4, 1)
+        self.sigmoid = nn.Sigmoid()
+
     def forward(self, x):
         x = self.discriminator(x)
-        x = x.view(-1, 1 + nl)
-        return x[:, 0], x[:, 1]
+        x = x.view(-1, ndf * 8 * 4 * 4)
+        dis = self.sigmoid(self.fc1(x))
+        aux = self.sigmoid(self.fc2(x))
+        return dis, aux
 
 def training(data_loader, file_list):
     print("start training")
@@ -173,6 +176,7 @@ def training(data_loader, file_list):
             discriminator.zero_grad()
             img = data[0]
             aux_label = data[1]
+            print(aux_label.shape)
             if args.cuda:
                 img = Variable(img).cuda()
                 aux_label = Variable(aux_label).cuda()
@@ -188,7 +192,7 @@ def training(data_loader, file_list):
             else:
                 dis_real_label = Variable(torch.ones(vector_size)).cpu()
             dis_lossD_real = nn.BCELoss()(dis_real_predict, dis_real_label)
-            aux_lossD_real = nn.NLLLoss()(aux_real_predict, aux_label)
+            aux_lossD_real = nn.BCELoss()(aux_real_predict, aux_label)
             lossD_real = dis_lossD_real + aux_lossD_real
             D_x = dis_real_predict.mean().data[0]
 
@@ -210,7 +214,7 @@ def training(data_loader, file_list):
                 dis_fake_label = Variable(torch.zeros(vector_size)).cpu()
 
             dis_lossD_fake = nn.BCELoss()(dis_fake_predict, dis_fake_label)
-            aux_lossD_fake = nn.NLLLoss()(aux_fake_predict, aux_label)
+            aux_lossD_fake = nn.BCELoss()(aux_fake_predict, aux_label)
             D_G_z1 = dis_fake_predict.mean().data[0]
             lossD_fake = dis_lossD_fake + aux_lossD_fake
 
@@ -226,7 +230,7 @@ def training(data_loader, file_list):
             output, output_aux = discriminator(fake_img) 
 
             dis_lossG = nn.BCELoss()(output, dis_real_label)
-            aux_lossG = nn.NLLLoss()(output_aux, aux_label)
+            aux_lossG = nn.BCELoss()(output_aux, aux_label)
             lossG = dis_lossG + aux_lossG
             lossG.backward()
             all_loss_G.append(lossG.data[0])
