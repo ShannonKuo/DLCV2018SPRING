@@ -138,7 +138,7 @@ class ACGAN_discriminator(nn.Module):
     def forward(self, x):
         x = self.discriminator(x)
         x = x.view(-1, 1 + nl)
-        return x[:, 0], x[:, 1: 14]
+        return x[:, 0], x[:, 1]
 
 def training(data_loader, file_list):
     print("start training")
