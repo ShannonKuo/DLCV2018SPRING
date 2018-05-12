@@ -22,7 +22,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 1
+debug = 0
 train = 1
 if debug == 1:
     num_epochs = 3
@@ -32,7 +32,7 @@ batch_size = 32
 learning_rate = 1e-5
 
 nz = 100
-nl = 13
+nl = 1
 ngf = 64
 ndf = 64
 nc = 3
@@ -64,7 +64,7 @@ def load_image(folder, csv_path):
         if (i > 10 and debug == 1):
            break
     label = np.genfromtxt(csv_path, delimiter=',', dtype=float)
-    label = label[1:, 1: 14]
+    label = label[1:, 8: 9]
     if debug == 1:
         label = label[0: 12, :]
     label = torch.from_numpy(label).type(torch.FloatTensor)
@@ -269,10 +269,10 @@ def plot_loss():
 def generate_img(generator):
     noise = torch.randn(10, nz, 1, 1)
     noise = torch.cat((noise, noise), dim=0)
-    random_aux = np.random.randint(0, 1.0, (10, nl, 1, 1))
-    random_aux[:, 8, 0, 0] = 1
+    random_aux = np.random.randint(0, 1.0, (10, 1, 1, 1))
+    random_aux[:, 0, 0, 0] = 1
     random_aux2 = random_aux
-    random_aux2[:, 8, 0, 0] = 0
+    random_aux2[:, 0, 0, 0] = 0
     random_aux = np.vstack((random_aux, random_aux2))
     random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
     noise = torch.cat((noise, random_aux), dim=1)
