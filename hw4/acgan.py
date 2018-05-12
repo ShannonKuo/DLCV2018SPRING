@@ -22,7 +22,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 0
+debug = 1
 train = 1
 if debug == 1:
     num_epochs = 3
@@ -67,6 +67,7 @@ def load_image(folder, csv_path):
     label = label[1:, 8: 9]
     if debug == 1:
         label = label[0: 12, :]
+
     label = torch.from_numpy(label).type(torch.FloatTensor)
     data = [(img_transform(x[i]), label[i]) for i in range(len(x))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
@@ -193,7 +194,7 @@ def training(data_loader, file_list):
 
             #log(1-D(G(z)))
             noise = torch.randn(vector_size, nz, 1, 1)
-            random_aux = np.random.randint(0, 1.0, (vector_size, nl, 1, 1))
+            random_aux = np.random.randint(2, size=(vector_size, nl, 1, 1))
             random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
             noise = torch.cat((noise, random_aux), dim=1)
             if args.cuda:
@@ -272,6 +273,7 @@ def generate_img(generator):
     random_aux = np.zeros((10, 1, 1, 1))
     random_aux2 = np.ones((10, 1, 1, 1))
     random_aux = np.vstack((random_aux, random_aux2))
+    print(random_aux)
     random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
     noise = torch.cat((noise, random_aux), dim=1)
     if args.cuda:
@@ -286,6 +288,7 @@ def generate_img(generator):
 
 if __name__ == '__main__':
     if train == 1:
+        np.random.seed(999)
         torch.manual_seed(999)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(999)
