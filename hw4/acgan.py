@@ -29,7 +29,7 @@ if debug == 1:
 else:
     num_epochs = 50
 batch_size = 32
-learning_rate = 1e-5
+learning_rate = 1e-4
 
 nz = 100
 nl = 1
@@ -210,7 +210,7 @@ def training(data_loader, file_list):
                 dis_fake_label = Variable(torch.zeros(vector_size)).cpu()
 
             dis_lossD_fake = nn.BCELoss()(dis_fake_predict, dis_fake_label)
-            aux_lossD_fake = nn.BCELoss()(aux_fake_predict, aux_label)
+            aux_lossD_fake = nn.NLLLoss()(aux_fake_predict, aux_label)
             D_G_z1 = dis_fake_predict.mean().data[0]
             lossD_fake = dis_lossD_fake + aux_lossD_fake
 
@@ -226,7 +226,7 @@ def training(data_loader, file_list):
             output, output_aux = discriminator(fake_img) 
 
             dis_lossG = nn.BCELoss()(output, dis_real_label)
-            aux_lossG = nn.BCELoss()(output_aux, aux_label)
+            aux_lossG = nn.NLLLoss()(output_aux, aux_label)
             lossG = dis_lossG + aux_lossG
             lossG.backward()
             all_loss_G.append(lossG.data[0])
@@ -273,7 +273,6 @@ def generate_img(generator):
     random_aux = np.zeros((10, 1, 1, 1))
     random_aux2 = np.ones((10, 1, 1, 1))
     random_aux = np.vstack((random_aux, random_aux2))
-    print(random_aux)
     random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
     noise = torch.cat((noise, random_aux), dim=1)
     if args.cuda:
