@@ -22,7 +22,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 0
+debug = 1
 train = 1
 if debug == 1:
     num_epochs = 3
@@ -68,12 +68,6 @@ def load_image(folder, csv_path):
     if debug == 1:
         label = label[0: 12, :]
     label = torch.from_numpy(label).type(torch.FloatTensor)
-    #with open('./hw4_data/test.csv', newline='') as csvfile:
-    #    reader = csv.DictReader(csvfile)
-    #    for i, row in enumerate(reader):
-    #        label.append(row)
-    #        if debug == 1 and i > 10:
-    #            break;
     data = [(img_transform(x[i]), label[i]) for i in range(len(x))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     print("finish load image")
@@ -178,7 +172,6 @@ def training(data_loader, file_list):
             discriminator.zero_grad()
             img = data[0]
             aux_label = data[1]
-            print(type(aux_label))
             if args.cuda:
                 img = Variable(img).cuda()
                 aux_label = Variable(aux_label).cuda()
@@ -191,12 +184,8 @@ def training(data_loader, file_list):
 
             if args.cuda:
                 dis_real_label = Variable(torch.ones(vector_size)).cuda()
-                #dis_real_predict = Variable(dis_real_predict).cuda()
-                #aux_real_predict = Variable(aux_real_predict).cuda()
             else:
                 dis_real_label = Variable(torch.ones(vector_size)).cpu()
-                #dis_real_predict = Variable(dis_real_predict).cpu()
-                #aux_real_predict = Variable(aux_real_predict).cpu()
             dis_lossD_real = nn.BCELoss()(dis_real_predict, dis_real_label)
             aux_lossD_real = nn.BCELoss()(aux_real_predict, aux_label)
             lossD_real = dis_lossD_real + aux_lossD_real
@@ -211,7 +200,6 @@ def training(data_loader, file_list):
                 noise = Variable(noise).cuda()
             else:
                 noise = Variable(noise).cpu()
-            #TODO noise
             fake_img = generator(noise)
             dis_fake_predict, aux_fake_predict = discriminator(fake_img.detach())
 
@@ -279,8 +267,13 @@ def plot_loss():
     plt.close()
 
 def generate_img(generator):
-    noise = torch.randn(32, nz, 1, 1)
-    random_aux = np.random.randint(0, 1.0, (32, nl, 1, 1))
+    noise = torch.randn(10, nz, 1, 1)
+    noise = torch.cat((noise, noise), dim=0)
+    random_aux = np.random.randint(0, 1.0, (10, nl, 1, 1))
+    random_aux[:, 8, 0, 0] = 1
+    random_aux2 = random_aux
+    random_aux2[:, 8, 0, 0] = 0
+    random_aux = np.vstack((random_aux, random_aux2))
     random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
     noise = torch.cat((noise, random_aux), dim=1)
     if args.cuda:
@@ -289,7 +282,7 @@ def generate_img(generator):
         noise = Variable(noise).cpu()
     fake_img = generator(noise)
     pic = to_img(fake_img.cpu().data)
-    out = torchvision.utils.make_grid(pic, nrow=8)
+    out = torchvision.utils.make_grid(pic, nrow=10)
     save_image(out, output_folder + '/fig2_3.jpg', normalize=True)
 
 
