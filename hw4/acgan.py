@@ -22,7 +22,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 0
+debug = 1
 train = 1
 if debug == 1:
     num_epochs = 3
@@ -269,10 +269,8 @@ def plot_loss():
 def generate_img(generator):
     noise = torch.randn(10, nz, 1, 1)
     noise = torch.cat((noise, noise), dim=0)
-    random_aux = np.random.randint(0, 1.0, (10, 1, 1, 1))
-    random_aux[:, 0, 0, 0] = 1
-    random_aux2 = random_aux
-    random_aux2[:, 0, 0, 0] = 0
+    random_aux = np.zeros((10, 1, 1, 1))
+    random_aux2 = np.ones((10, 1, 1, 1))
     random_aux = np.vstack((random_aux, random_aux2))
     random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
     noise = torch.cat((noise, random_aux), dim=1)
