@@ -22,12 +22,12 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 1
+debug = 0
 train = 1
 if debug == 1:
     num_epochs = 3
 else:
-    num_epochs = 3
+    num_epochs = 50
 batch_size = 32
 learning_rate = 1e-5
 
