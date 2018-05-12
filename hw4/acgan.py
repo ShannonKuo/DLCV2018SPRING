@@ -188,7 +188,7 @@ def training(data_loader, file_list):
             else:
                 dis_real_label = Variable(torch.ones(vector_size)).cpu()
             dis_lossD_real = nn.BCELoss()(dis_real_predict, dis_real_label)
-            aux_lossD_real = nn.BCELoss()(aux_real_predict, aux_label)
+            aux_lossD_real = nn.NLLLoss()(aux_real_predict, aux_label)
             lossD_real = dis_lossD_real + aux_lossD_real
             D_x = dis_real_predict.mean().data[0]
 
