@@ -11,6 +11,7 @@ from torchvision.utils import save_image
 import torchvision.transforms.functional as F
 import scipy.misc
 import os
+import csv
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -26,7 +27,7 @@ train = 1
 if debug == 1:
     num_epochs = 3
 else:
-    num_epochs = 50
+    num_epochs = 3
 batch_size = 32
 learning_rate = 1e-5
 
@@ -50,9 +51,10 @@ args = parser.parse_args()
 args.cuda = torch.cuda.is_available()
 
 
-def load_image(folder):
+def load_image(folder, csv_path):
     print("load_image...")
     x = []
+    label = []
     file_list = [file for file in os.listdir(folder) if file.endswith('.png')]
     file_list.sort()
 
@@ -61,9 +63,19 @@ def load_image(folder):
         x.append(img)
         if (i > 10 and debug == 1):
            break
-
-    x = [img_transform(i) for i in x]
-    dataloader = DataLoader(x, batch_size=batch_size, shuffle=False)
+    label = np.genfromtxt(csv_path, delimiter=',', dtype=float)
+    label = label[1:, 1: 14]
+    if debug == 1:
+        label = label[0: 12, :]
+    label = torch.from_numpy(label).type(torch.FloatTensor)
+    #with open('./hw4_data/test.csv', newline='') as csvfile:
+    #    reader = csv.DictReader(csvfile)
+    #    for i, row in enumerate(reader):
+    #        label.append(row)
+    #        if debug == 1 and i > 10:
+    #            break;
+    data = [(img_transform(x[i]), label[i]) for i in range(len(x))]
+    dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     print("finish load image")
     return (dataloader, file_list)
 
@@ -126,25 +138,26 @@ class ACGAN_discriminator(nn.Module):
             nn.BatchNorm2d(ndf * 8),
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*8) x 4 x 4
-            nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False),
+            nn.Conv2d(ndf * 8, 1 + nl, 4, 1, 0, bias=False),
             nn.Sigmoid()
         )
     def forward(self, x):
         x = self.discriminator(x)
-        return x.view(-1, 1).squeeze(1)
+        x = x.view(-1, 1 + nl)
+        return x[:, 0], x[:, 1: 14]
 
 def training(data_loader, file_list):
     print("start training")
     if args.cuda:
-        generator = GAN_generator().cuda()
+        generator = ACGAN_generator().cuda()
     else:
-        generator = GAN_generator().cpu()
+        generator = ACGAN_generator().cpu()
     generator.apply(weights_init)
 
     if args.cuda:
-        discriminator = GAN_discriminator().cuda()
+        discriminator = ACGAN_discriminator().cuda()
     else:
-        discriminator = GAN_discriminator().cpu()
+        discriminator = ACGAN_discriminator().cpu()
     discriminator.apply(weights_init)
 
     generator.train()
@@ -163,32 +176,42 @@ def training(data_loader, file_list):
             ###########################
             #log(D(x))
             discriminator.zero_grad()
-            img, aux_label = data
-
+            img = data[0]
+            aux_label = data[1]
+            print(type(aux_label))
             if args.cuda:
                 img = Variable(img).cuda()
+                aux_label = Variable(aux_label).cuda()
             else:
                 img = Variable(img).cpu()
+                aux_label = Variable(aux_label).cpu()
+
             dis_real_predict, aux_real_predict = discriminator(img)
             vector_size = dis_real_predict.shape[0]
 
             if args.cuda:
                 dis_real_label = Variable(torch.ones(vector_size)).cuda()
+                #dis_real_predict = Variable(dis_real_predict).cuda()
+                #aux_real_predict = Variable(aux_real_predict).cuda()
             else:
                 dis_real_label = Variable(torch.ones(vector_size)).cpu()
-            
+                #dis_real_predict = Variable(dis_real_predict).cpu()
+                #aux_real_predict = Variable(aux_real_predict).cpu()
             dis_lossD_real = nn.BCELoss()(dis_real_predict, dis_real_label)
             aux_lossD_real = nn.BCELoss()(aux_real_predict, aux_label)
             lossD_real = dis_lossD_real + aux_lossD_real
             D_x = dis_real_predict.mean().data[0]
 
             #log(1-D(G(z)))
+            noise = torch.randn(vector_size, nz, 1, 1)
+            random_aux = np.random.randint(0, 1.0, (vector_size, nl, 1, 1))
+            random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
+            noise = torch.cat((noise, random_aux), dim=1)
             if args.cuda:
-                noise = Variable(torch.randn(vector_size, nz, 1, 1)).cuda()
+                noise = Variable(noise).cuda()
             else:
-                noise = Variable(torch.randn(vector_size, nz, 1, 1)).cpu()
+                noise = Variable(noise).cpu()
             #TODO noise
-
             fake_img = generator(noise)
             dis_fake_predict, aux_fake_predict = discriminator(fake_img.detach())
 
@@ -199,7 +222,7 @@ def training(data_loader, file_list):
 
             dis_lossD_fake = nn.BCELoss()(dis_fake_predict, dis_fake_label)
             aux_lossD_fake = nn.BCELoss()(aux_fake_predict, aux_label)
-            D_G_z1 = fake_predict.mean().data[0]
+            D_G_z1 = dis_fake_predict.mean().data[0]
             lossD_fake = dis_lossD_fake + aux_lossD_fake
 
             lossD = lossD_real + lossD_fake
@@ -229,8 +252,8 @@ def training(data_loader, file_list):
         generate_img(generator)
         plot_loss()
 
-    torch.save(generator.state_dict(), './gan_generator.pth')
-    torch.save(discriminator.state_dict(), './gan_discriminator.pth')
+    torch.save(generator.state_dict(), './acgan_generator.pth')
+    torch.save(discriminator.state_dict(), './acgan_discriminator.pth')
     return generator, discriminator
 
 def plot_loss():
@@ -256,7 +279,14 @@ def plot_loss():
     plt.close()
 
 def generate_img(generator):
-    noise = Variable(torch.randn(32, nz, 1, 1)).cuda()
+    noise = torch.randn(32, nz, 1, 1)
+    random_aux = np.random.randint(0, 1.0, (32, nl, 1, 1))
+    random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
+    noise = torch.cat((noise, random_aux), dim=1)
+    if args.cuda:
+        noise = Variable(noise).cuda()
+    else:
+        noise = Variable(noise).cpu()
     fake_img = generator(noise)
     pic = to_img(fake_img.cpu().data)
     out = torchvision.utils.make_grid(pic, nrow=8)
@@ -268,10 +298,10 @@ if __name__ == '__main__':
         torch.manual_seed(999)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(999)
-        train_data_loader, train_file_list = load_image('./hw4_data/train')
+        train_data_loader, train_file_list = load_image('./hw4_data/train', './hw4_data/train.csv')
         model_G, model_D = training(train_data_loader, train_file_list)
     else:
-        model_G = torch.load('./gan_generator.pth')
-        model_D = torch.load('./gan_discriminator.pth')
+        model_G = torch.load('./acgan_generator.pth')
+        model_D = torch.load('./acgan_discriminator.pth')
     plot_loss()
     generate_img(model_G)
