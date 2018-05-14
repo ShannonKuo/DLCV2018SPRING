@@ -83,6 +83,16 @@ def weights_init(m):
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0)
 
+def compute_acc(preds, labels):
+    correct = 0
+    preds_ = preds.data.max(1)[1]
+    #correct = preds_.eq(labels.data).cpu().sum()
+    for i in range(len(preds_)):
+        if preds_[i] == labels[i].data[0]:
+            correct += 1
+    acc = float(correct) / float(len(labels.data)) * 100.0
+    return acc
+
 class ACGAN_generator(nn.Module):
     def __init__(self):
         super(ACGAN_generator, self).__init__()
@@ -182,11 +192,11 @@ def training(data_loader, file_list):
             img = data[0]
             aux_label = data[1]
             one_hot_aux_label = np.zeros((len(aux_label), 2))
-            for i in range(len(one_hot_aux_label)):
-                if aux_label[i][0] == 1:
-                    one_hot_aux_label[i][1] = 1
+            for j in range(len(one_hot_aux_label)):
+                if aux_label[j][0] == 1:
+                    one_hot_aux_label[j][1] = 1
                 else:
-                    one_hot_aux_label[i][0] = 1
+                    one_hot_aux_label[j][0] = 1
             
             one_hot_aux_label = torch.from_numpy(one_hot_aux_label).type(torch.FloatTensor)
             if args.cuda:
@@ -208,6 +218,10 @@ def training(data_loader, file_list):
             lossD_real = dis_lossD_real + aux_lossD_real
             D_x = dis_real_predict.mean().data[0]
 
+
+            accuracy = compute_acc(aux_real_predict, Variable(aux_label).cpu().type(torch.FloatTensor))
+            all_accuracy.append(accuracy)
+
             #log(1-D(G(z)))
             noise = torch.randn(vector_size, nz)#, 1, 1)
             random_aux = np.random.randint(2, size=(vector_size, nl))#, 1, 1))
@@ -219,7 +233,6 @@ def training(data_loader, file_list):
                 noise = Variable(noise).cpu()
             fake_img = generator(noise)
             dis_fake_predict, aux_fake_predict = discriminator(fake_img.detach())
-
             if args.cuda:
                 dis_fake_label = Variable(torch.zeros(vector_size)).cuda()
             else:
@@ -265,20 +278,28 @@ def plot_loss():
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
-    fig=plt.figure(figsize=(15, 5))
+    fig=plt.figure(figsize=(15, 7.5))
     t = np.arange(0.0, len(all_loss_D), 1.0)
-    fig.add_subplot(1, 2, 1)
+    fig.add_subplot(1, 3, 1)
     line, = plt.plot(t, all_loss_D, lw=2)
     plt.xlabel('steps')
     plt.ylabel('Discriminator_loss')
     plt.title('Discriminator_loss vs steps')
 
     t = np.arange(0.0, len(all_loss_G), 1.0)
-    fig.add_subplot(1, 2, 2)
+    fig.add_subplot(1, 3, 2)
     line, = plt.plot(t, all_loss_G, lw=2)
     plt.xlabel('steps')
     plt.ylabel('Generator_loss')
     plt.title('Generator_loss vs steps')
+ 
+    t = np.arange(0.0, len(all_accuracy), 1.0)
+    fig.add_subplot(1, 3, 3)
+    line, = plt.plot(t, all_accuracy, lw=2)
+    plt.xlabel('steps')
+    plt.ylabel('accuracy')
+    plt.title('accuracy vs steps')
+
 
     plt.savefig(output_folder + '/fig2_2.jpg')
     plt.close()
