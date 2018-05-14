@@ -24,6 +24,7 @@ def to_img(x):
 
 debug = 1
 train = 1
+attributeID = 8
 if debug == 1:
     num_epochs = 3
 else:
@@ -64,7 +65,7 @@ def load_image(folder, csv_path):
         if (i > 10 and debug == 1):
            break
     label = np.genfromtxt(csv_path, delimiter=',', dtype=float)
-    label = label[1:, 8: 9]
+    label = label[1:, attributeID: attributeID + 1]
     if debug == 1:
         label = label[0: 12, :]
     label = torch.from_numpy(label).type(torch.FloatTensor)
