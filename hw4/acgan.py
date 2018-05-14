@@ -267,7 +267,7 @@ def training(data_loader, file_list):
                  % (epoch + 1, num_epochs, i, len(data_loader),
                  lossD.data[0], lossG.data[0], D_x, D_G_z1, D_G_z2))
 
-        generate_img(generator)
+        generate_img(generator, discriminator)
         plot_loss()
 
     torch.save(generator.state_dict(), './acgan_generator.pth')
@@ -304,7 +304,8 @@ def plot_loss():
     plt.savefig(output_folder + '/fig2_2.jpg')
     plt.close()
 
-def generate_img(generator):
+def generate_img(generator, discriminator):
+    generator.eval()
     noise = torch.randn(10, nz)#, 1, 1)
     noise = torch.cat((noise, noise), dim=0)
     random_aux = np.zeros((10, 1))#, 1, 1))
@@ -312,12 +313,13 @@ def generate_img(generator):
     random_aux = np.vstack((random_aux, random_aux2))
     random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
     noise = torch.cat((noise, random_aux), dim=1)
-    
     if args.cuda:
         noise = Variable(noise).cuda()
     else:
         noise = Variable(noise).cpu()
     fake_img = generator(noise)
+    dis_fake_predict, aux_fake_predict = discriminator(fake_img.detach())
+    print(aux_fake_predict.data.max(1)[1])
     pic = to_img(fake_img.cpu().data)
     out = torchvision.utils.make_grid(pic, nrow=10)
     save_image(out, output_folder + '/fig2_3.jpg', normalize=True)
@@ -335,4 +337,4 @@ if __name__ == '__main__':
         model_G = torch.load('./acgan_generator.pth')
         model_D = torch.load('./acgan_discriminator.pth')
     plot_loss()
-    generate_img(model_G)
+    generate_img(model_G, model_D)
