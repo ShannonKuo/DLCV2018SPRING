@@ -22,7 +22,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 1
+debug = 0
 train = 1
 attributeID = 8
 if debug == 1:
@@ -41,6 +41,9 @@ output_folder = './output_acgan'
 all_loss_G = []
 all_loss_D = []
 all_accuracy = []
+all_aux_lossD_real = []
+all_aux_lossD_fake = []
+
 
 img_transform = transforms.Compose([
     transforms.ToTensor(),
@@ -139,18 +142,22 @@ class ACGAN_discriminator(nn.Module):
             # input is (nc) x 64 x 64
             nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.Dropout(0.5, inplace=True),
             # state size. (ndf) x 32 x 32
             nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ndf * 2),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.Dropout(0.5, inplace=True),
             # state size. (ndf*2) x 16 x 16
             nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ndf * 4),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.Dropout(0.5, inplace=True),
             # state size. (ndf*4) x 8 x 8
             nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ndf * 8),
             nn.LeakyReLU(0.2, inplace=True),
+            nn.Dropout(0.5, inplace=True),
             # state size. (ndf*8) x 4 x 4
         )
         self.fc1 = nn.Linear(ndf * 8 * 4 * 4, 1)
@@ -212,7 +219,9 @@ def training(data_loader, file_list):
                 dis_real_label = Variable(torch.ones(vector_size)).cpu()
             dis_lossD_real = nn.BCELoss()(dis_real_predict, dis_real_label)
             aux_lossD_real = nn.BCELoss()(aux_real_predict, one_hot_aux_label)
+            all_aux_lossD_real.append(aux_lossD_real.data[0])
             lossD_real = dis_lossD_real + aux_lossD_real
+            lossD_real.backward()
             D_x = dis_real_predict.mean().data[0]
 
 
@@ -244,11 +253,11 @@ def training(data_loader, file_list):
 
             dis_lossD_fake = nn.BCELoss()(dis_fake_predict, dis_fake_label)
             aux_lossD_fake = nn.BCELoss()(aux_fake_predict, one_hot_aux_label)
+            all_aux_lossD_fake.append(aux_lossD_fake.data[0])
             D_G_z1 = dis_fake_predict.mean().data[0]
             lossD_fake = dis_lossD_fake + aux_lossD_fake
-
+            lossD_fake.backward()
             lossD = lossD_real + lossD_fake
-            lossD.backward()
             all_loss_D.append(lossD.data[0])
             optimizerD.step()
 
@@ -267,9 +276,10 @@ def training(data_loader, file_list):
             optimizerG.step()
 
             # ===================log========================
-            print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
-                 % (epoch + 1, num_epochs, i, len(data_loader),
-                 lossD.data[0], lossG.data[0], D_x, D_G_z1, D_G_z2))
+            if i % 300 == 0:
+                print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
+                     % (epoch + 1, num_epochs, i, len(data_loader),
+                     lossD.data[0], lossG.data[0], D_x, D_G_z1, D_G_z2))
 
         generate_img(generator, discriminator)
         plot_loss()
@@ -285,17 +295,17 @@ def plot_loss():
     fig=plt.figure(figsize=(15, 7.5))
     t = np.arange(0.0, len(all_loss_D), 1.0)
     fig.add_subplot(1, 3, 1)
-    line, = plt.plot(t, all_loss_D, lw=2)
+    line, = plt.plot(t, all_aux_lossD_real, lw=2)
     plt.xlabel('steps')
     plt.ylabel('Discriminator_loss')
-    plt.title('Discriminator_loss vs steps')
+    plt.title('aux_lossD_real vs steps')
 
     t = np.arange(0.0, len(all_loss_G), 1.0)
     fig.add_subplot(1, 3, 2)
-    line, = plt.plot(t, all_loss_G, lw=2)
+    line, = plt.plot(t, all_aux_lossD_fake, lw=2)
     plt.xlabel('steps')
-    plt.ylabel('Generator_loss')
-    plt.title('Generator_loss vs steps')
+    plt.ylabel('loss')
+    plt.title('aux_lossD_fake vs steps')
  
     t = np.arange(0.0, len(all_accuracy), 1.0)
     fig.add_subplot(1, 3, 3)
