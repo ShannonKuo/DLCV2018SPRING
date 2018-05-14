@@ -68,9 +68,14 @@ def load_image(folder, csv_path):
     label = label[1:, attributeID: attributeID + 1]
     if debug == 1:
         label = label[0: 12, :]
-
-    label = torch.from_numpy(label).type(torch.FloatTensor)
-    data = [(img_transform(x[i]), label[i]) for i in range(len(x))]
+    label_one_hot = torch.zeros((len(label), 2))
+    for i in range(len(label)):
+        if label[i] == 1:
+            label_one_hot[i][1] = 1
+        else:
+            label_one_hot[i][0] = 1
+    #label = torch.from_numpy(label).type(torch.FloatTensor)
+    data = [(img_transform(x[i]), label_one_hot[i]) for i in range(len(x))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     print("finish load image")
     return (dataloader, file_list)
@@ -86,11 +91,12 @@ def weights_init(m):
 def compute_acc(preds, labels):
     correct = 0
     preds_ = preds.data.max(1)[1]
+    labels_ = labels.data.max(1)[1]
     #correct = preds_.eq(labels.data).cpu().sum()
     for i in range(len(preds_)):
-        if preds_[i] == labels[i].data[0]:
+        if preds_[i] == labels_[i]:
             correct += 1
-    acc = float(correct) / float(len(labels.data)) * 100.0
+    acc = float(correct) / float(len(labels_)) * 100.0
     return acc
 
 class ACGAN_generator(nn.Module):
@@ -118,7 +124,7 @@ class ACGAN_generator(nn.Module):
             nn.Tanh()
             # state size. (nc) x 64 x 64
         )
-        self.fc1 = nn.Linear(nz + nl, ngf * 8 * 1 * 1)
+        self.fc1 = nn.Linear(nz + nl * 2, ngf * 8 * 1 * 1)
     def forward(self, x):
         x = self.fc1(x)
         x = x.view(-1, ngf * 8, 1, 1)
@@ -190,22 +196,13 @@ def training(data_loader, file_list):
             #log(D(x))
             discriminator.zero_grad()
             img = data[0]
-            aux_label = data[1]
-            one_hot_aux_label = np.zeros((len(aux_label), 2))
-            for j in range(len(one_hot_aux_label)):
-                if aux_label[j][0] == 1:
-                    one_hot_aux_label[j][1] = 1
-                else:
-                    one_hot_aux_label[j][0] = 1
-            
-            one_hot_aux_label = torch.from_numpy(one_hot_aux_label).type(torch.FloatTensor)
+            one_hot_aux_label = data[1].type(torch.FloatTensor)
             if args.cuda:
                 img = Variable(img).cuda()
                 one_hot_aux_label = Variable(one_hot_aux_label).cuda()
             else:
                 img = Variable(img).cpu()
                 one_hot_aux_label = Variable(one_hot_aux_label).cpu()
-
             dis_real_predict, aux_real_predict = discriminator(img)
             vector_size = dis_real_predict.shape[0]
 
@@ -219,14 +216,21 @@ def training(data_loader, file_list):
             D_x = dis_real_predict.mean().data[0]
 
 
-            accuracy = compute_acc(aux_real_predict, Variable(aux_label).cpu().type(torch.FloatTensor))
+            accuracy = compute_acc(aux_real_predict, one_hot_aux_label)
             all_accuracy.append(accuracy)
 
             #log(1-D(G(z)))
             noise = torch.randn(vector_size, nz)#, 1, 1)
-            random_aux = np.random.randint(2, size=(vector_size, nl))#, 1, 1))
+            random = np.random.randint(2, size=(vector_size, nl))#, 1, 1))
+            random_aux = np.zeros((vector_size, 2))
+            for j in range(vector_size):
+                if random[j] == 1:
+                    random_aux[j][1] = 1
+                elif random[j] == 0:
+                    random_aux[j][0] = 1
             random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
             noise = torch.cat((noise, random_aux), dim=1)
+
             if args.cuda:
                 noise = Variable(noise).cuda()
             else:
@@ -308,9 +312,12 @@ def generate_img(generator, discriminator):
     generator.eval()
     noise = torch.randn(10, nz)#, 1, 1)
     noise = torch.cat((noise, noise), dim=0)
-    random_aux = np.zeros((10, 1))#, 1, 1))
-    random_aux2 = np.ones((10, 1))#, 1, 1))
-    random_aux = np.vstack((random_aux, random_aux2))
+    random_aux = np.zeros((20, 2))#, 1, 1))
+    for i in range(len(random_aux)):
+        if i < 10:
+            random_aux[i][1] = 1
+        else:
+            random_aux[i][0] = 1
     random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
     noise = torch.cat((noise, random_aux), dim=1)
     if args.cuda:
