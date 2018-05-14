@@ -88,9 +88,9 @@ class ACGAN_generator(nn.Module):
         super(ACGAN_generator, self).__init__()
         self.generator = nn.Sequential(
             # input is Z, going into a convolution
-            nn.ConvTranspose2d(nz + nl, ngf * 8, 4, 1, 0, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
+            #nn.ConvTranspose2d(nz + nl, ngf * 8, 4, 1, 0, bias=False),
+            #nn.BatchNorm2d(ngf * 8),
+            #nn.ReLU(True),
             # state size. (ngf*8) x 4 x 4
             nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf * 4),
@@ -108,8 +108,10 @@ class ACGAN_generator(nn.Module):
             nn.Tanh()
             # state size. (nc) x 64 x 64
         )
-
+        self.fc1 = nn.Linear(nz + nl, ngf * 8 * 4 * 4)
     def forward(self, x):
+        x = self.fc1(x)
+        x = x.view(-1, ngf * 8, 4, 4)
         output = self.generator(x)
         return output
 
@@ -199,8 +201,8 @@ def training(data_loader, file_list):
             D_x = dis_real_predict.mean().data[0]
 
             #log(1-D(G(z)))
-            noise = torch.randn(vector_size, nz, 1, 1)
-            random_aux = np.random.randint(2, size=(vector_size, nl, 1, 1))
+            noise = torch.randn(vector_size, nz)#, 1, 1)
+            random_aux = np.random.randint(2, size=(vector_size, nl))#, 1, 1))
             random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
             noise = torch.cat((noise, random_aux), dim=1)
             if args.cuda:
@@ -274,14 +276,14 @@ def plot_loss():
     plt.close()
 
 def generate_img(generator):
-    noise = torch.randn(10, nz, 1, 1)
+    noise = torch.randn(10, nz)#, 1, 1)
     noise = torch.cat((noise, noise), dim=0)
-    random_aux = np.zeros((10, 1, 1, 1))
-    random_aux2 = np.ones((10, 1, 1, 1))
+    random_aux = np.zeros((10, 1))#, 1, 1))
+    random_aux2 = np.ones((10, 1))#, 1, 1))
     random_aux = np.vstack((random_aux, random_aux2))
     random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
     noise = torch.cat((noise, random_aux), dim=1)
-
+    
     if args.cuda:
         noise = Variable(noise).cuda()
     else:
