@@ -22,7 +22,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 0
+debug = 1
 train = 1
 attributeID = 8
 if debug == 1:
@@ -88,9 +88,9 @@ class ACGAN_generator(nn.Module):
         super(ACGAN_generator, self).__init__()
         self.generator = nn.Sequential(
             # input is Z, going into a convolution
-            #nn.ConvTranspose2d(nz + nl, ngf * 8, 4, 1, 0, bias=False),
-            #nn.BatchNorm2d(ngf * 8),
-            #nn.ReLU(True),
+            nn.ConvTranspose2d(ngf * 8, ngf * 8, 4, 1, 0, bias=False),
+            nn.BatchNorm2d(ngf * 8),
+            nn.ReLU(True),
             # state size. (ngf*8) x 4 x 4
             nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf * 4),
@@ -108,10 +108,10 @@ class ACGAN_generator(nn.Module):
             nn.Tanh()
             # state size. (nc) x 64 x 64
         )
-        self.fc1 = nn.Linear(nz + nl, ngf * 8 * 4 * 4)
+        self.fc1 = nn.Linear(nz + nl, ngf * 8 * 1 * 1)
     def forward(self, x):
         x = self.fc1(x)
-        x = x.view(-1, ngf * 8, 4, 4)
+        x = x.view(-1, ngf * 8, 1, 1)
         output = self.generator(x)
         return output
 
