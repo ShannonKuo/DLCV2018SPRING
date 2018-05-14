@@ -68,6 +68,7 @@ def load_image(folder, csv_path):
     label = label[1:, attributeID: attributeID + 1]
     if debug == 1:
         label = label[0: 12, :]
+    print(label)
     label = torch.from_numpy(label).type(torch.FloatTensor)
     data = [(img_transform(x[i]), label[i]) for i in range(len(x))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
@@ -142,7 +143,7 @@ class ACGAN_discriminator(nn.Module):
         x = self.discriminator(x)
         x = x.view(-1, ndf * 8 * 4 * 4)
         dis = self.sigmoid(self.fc1(x))
-        aux = self.sigmoid(self.fc2(x))
+        aux = self.softmax(self.fc2(x))
         return dis, aux
 
 def training(data_loader, file_list):
@@ -280,6 +281,8 @@ def generate_img(generator):
     random_aux = np.vstack((random_aux, random_aux2))
     random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
     noise = torch.cat((noise, random_aux), dim=1)
+    print(noise[:, 0, 0, 0])
+    print(noise[:, 100, 0, 0])
     if args.cuda:
         noise = Variable(noise).cuda()
     else:
