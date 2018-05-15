@@ -109,19 +109,19 @@ class ACGAN_generator(nn.Module):
             # input is Z, going into a convolution
             nn.ConvTranspose2d(ngf * 8, ngf * 8, 4, 1, 0, bias=False),
             nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
+            nn.LeakyReLU(0.2, inplace=True),
             # state size. (ngf*8) x 4 x 4
             nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf * 4),
-            nn.ReLU(True),
+            nn.LeakyReLU(0.2, inplace=True),
             # state size. (ngf*4) x 8 x 8
             nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
+            nn.LeakyReLU(0.2, inplace=True),
             # state size. (ngf*2) x 16 x 16
             nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
             nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
+            nn.LeakyReLU(0.2, inplace=True),
             # state size. (ngf) x 32 x 32
             nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False),
             nn.Tanh()
@@ -266,9 +266,21 @@ def training(data_loader, file_list):
             ###########################
             generator.zero_grad()
             output, output_aux = discriminator(fake_img) 
+            random = np.random.randint(0, 2, (vector_size))
+            gen_labels = np.zeros((vector_size, 2))
+            for i in range(vector_size):
+                if random[i] == 0:
+                    gen_labels[i][0] = 1
+                else:
+                    gen_labels[i][1] = 1
+            gen_labels = torch.from_numpy(gen_labels).type(torch.FloatTensor)
+            if args.cuda:
+                gen_labels = Variable(gen_labels).cuda()
+            else:
+                gen_labels = Variable(gen_labels).cpu()
 
             dis_lossG = nn.BCELoss()(output, dis_real_label)
-            aux_lossG = nn.BCELoss()(output_aux, one_hot_aux_label)
+            aux_lossG = nn.BCELoss()(output_aux, gen_labels)
             lossG = dis_lossG + aux_lossG
             lossG.backward()
             all_loss_G.append(lossG.data[0])
