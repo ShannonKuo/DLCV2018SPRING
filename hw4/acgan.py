@@ -22,7 +22,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 0
+debug = 1
 train = 1
 attributeID = 8
 if debug == 1:
@@ -248,11 +248,13 @@ def training(data_loader, file_list):
             dis_fake_predict, aux_fake_predict = discriminator(fake_img.detach())
             if args.cuda:
                 dis_fake_label = Variable(torch.zeros(vector_size)).cuda()
+                random_aux_label = Variable(random_aux).cuda()
             else:
                 dis_fake_label = Variable(torch.zeros(vector_size)).cpu()
-
+                random_aux_label = Variable(random_aux).cpu()
+            
             dis_lossD_fake = nn.BCELoss()(dis_fake_predict, dis_fake_label)
-            aux_lossD_fake = nn.BCELoss()(aux_fake_predict, one_hot_aux_label)
+            aux_lossD_fake = nn.BCELoss()(aux_fake_predict, random_aux_label)
             all_aux_lossD_fake.append(aux_lossD_fake.data[0])
             D_G_z1 = dis_fake_predict.mean().data[0]
             lossD_fake = dis_lossD_fake + aux_lossD_fake
@@ -267,20 +269,8 @@ def training(data_loader, file_list):
             generator.zero_grad()
             output, output_aux = discriminator(fake_img) 
             random = np.random.randint(0, 2, (vector_size))
-            gen_labels = np.zeros((vector_size, 2))
-            for i in range(vector_size):
-                if random[i] == 0:
-                    gen_labels[i][0] = 1
-                else:
-                    gen_labels[i][1] = 1
-            gen_labels = torch.from_numpy(gen_labels).type(torch.FloatTensor)
-            if args.cuda:
-                gen_labels = Variable(gen_labels).cuda()
-            else:
-                gen_labels = Variable(gen_labels).cpu()
-
             dis_lossG = nn.BCELoss()(output, dis_real_label)
-            aux_lossG = nn.BCELoss()(output_aux, gen_labels)
+            aux_lossG = nn.BCELoss()(output_aux, random_aux_label)
             lossG = dis_lossG + aux_lossG
             lossG.backward()
             all_loss_G.append(lossG.data[0])
