@@ -27,7 +27,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 0
+debug = 1
 train = 1
 if debug == 1:
     num_epochs = 3
@@ -55,9 +55,10 @@ args = parser.parse_args()
 args.cuda = torch.cuda.is_available()
 
 lambdaKL = args.lambdaKL
-output_folder = './output_' + str(args.lambdaKL)
-test_output_folder = './test_output_' + str(args.lambdaKL)
-output_fig_folder = './output_fig_' + str(args.lambdaKL)
+#output_folder = './output_' + str(args.lambdaKL)
+#test_output_folder = './test_output_' + str(args.lambdaKL)
+dataset_folder = sys.argv[1]
+output_fig_folder = sys.argv[2]
 
 #device = torch.device("cuda" if args.cuda else "cpu")
 
@@ -154,26 +155,26 @@ class autoencoder(nn.Module):
         z = z.view(-1, ndf * 8, 4, 4)
         z = self.decoder(z)
         return z, mu, logvar
-        #x = self.encoder(x)
-        #x = self.conv11(x)
-        #x = self.decoder(x)
-        #return x
+
 def loss_function(recon_x, x, mu, logvar):
-    """
-    recon_x: generating images
-    x: origin images
-    mu: latent mean
-    logvar: latent log variance
-    """
     criterion = nn.MSELoss()
     MSE = criterion(recon_x, x)  # mse loss
-    # loss = 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     KLD_element = mu.pow(2).add_(logvar.exp()).mul_(-1).add_(1).add_(logvar)
-    KLD = torch.sum(KLD_element).mul_(-0.5)#.div_(batch_size)
+    KLD = torch.sum(KLD_element).mul_(-0.5)
     # KL divergence
     KLDloss.append(KLD.data[0])
     KLD = KLD.mul_(lambdaKL)
     MSEloss.append(MSE.data[0])
+
+    file = open('./vae_KLDloss.txt', "a+")
+    file.write(str(KLD.data[0]))
+    file.write('\n')
+    file.close()
+    
+    file = open('./vae_MSEloss.txt', "a+")
+    file.write(str(MSE.data[0]))
+    file.write('\n')
+    file.close()
     return MSE + KLD
 
 def training(data_loader, file_list):
@@ -186,8 +187,6 @@ def training(data_loader, file_list):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
                                 weight_decay=1e-5)
 
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
     all_loss = []
     for epoch in range(num_epochs):
         idx = 0
@@ -206,27 +205,15 @@ def training(data_loader, file_list):
             loss.backward()
             train_loss += loss.data[0]
             optimizer.step()
-
-            if idx < 10:
-                pic = to_img(output.cpu().data)
-                for i in range(len(pic)):
-                    file_path = output_folder + '/' + file_list[idx] 
-                    save_image(pic[i], output_folder + '/' + file_list[idx], normalize=True)
-                    idx += 1
         # ===================log========================
         print('epoch [{}/{}], loss:{:.4f}'.
                 format(epoch+1, num_epochs, train_loss))
-
-        random_generate_img(model)
-        plot_loss()
     torch.save(model.state_dict(), './conv_autoencoder.pth')
     return model
 
 def testing(model, data_loader, file_list):
     print("start test...")
     model.eval()
-    if not os.path.exists(test_output_folder):
-        os.makedirs(test_output_folder)
     if not os.path.exists(output_fig_folder):
         os.makedirs(output_fig_folder)
     idx = 0
@@ -245,8 +232,6 @@ def testing(model, data_loader, file_list):
         pic = to_img(output.cpu().data)
         input = to_img(img.cpu().data)
         for j in range(len(pic)):
-            file_path = test_output_folder + '/' + file_list[idx]
-            save_image(pic[j], test_output_folder + '/' + file_list[idx], normalize=True)
             idx += 1
             if choose_cnt < 10:
                 ten_images[choose_cnt] = input[j]
@@ -265,11 +250,6 @@ def random_generate_img(model):
 
     for i in range(32):
         x = torch.randn(512)
-        #r = np.random.normal(0.0, 1.0, 512)
-        #print(r)
-
-        #for i in range(512):
-        #    x[i] = x[i] / 10
         if args.cuda:
             x = Variable(x).cuda()
         else:
@@ -300,24 +280,21 @@ def plot_loss():
     plt.xlabel('steps')
     plt.ylabel('KLD_loss')
     plt.title('KLD_loss vs steps')
-    #plt.ylim(0,20000)
 
     plt.savefig(output_fig_folder + '/fig1_2.jpg')
     plt.close()
 
 def calculate_tsne():
     color = []
-    with open('./hw4_data/test.csv', newline='') as csvfile:
+    with open(dataset_folder + '/test.csv', newline='') as csvfile:
         reader = csv.DictReader(csvfile)
         for i, row in enumerate(reader):
             color.append(row['Male'])
             if debug == 1 and i > 10:
                 break;
     color = np.array(color)
-    print(len(latent_spaces))
     tsne = TSNE(n_components=2, init='pca', random_state=0)
     Y = tsne.fit_transform(latent_spaces)
-    #ax = fig.add_subplot(2, 5, 10)
     plt.scatter(Y[:, 0], Y[:, 1], s=5, c=color, cmap=plt.cm.Spectral)
     plt.title("t-SNE")
     plt.savefig(output_fig_folder + '/fig1_5.jpg')
@@ -330,12 +307,12 @@ if __name__ == '__main__':
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(999)
         training_testing = 'training'
-        train_data_loader, train_file_list = load_image('./hw4_data/train')
+        train_data_loader, train_file_list = load_image(dataset_folder + '/train')
         model = training(train_data_loader, train_file_list)
     else:
         model = torch.load('./conv_autoencoder.pth')
     training_testing = 'testing'
-    test_data_loader, test_file_list = load_image('./hw4_data/test')
+    test_data_loader, test_file_list = load_image(dataset_folder + '/test')
     testing(model, test_data_loader, test_file_list)
     random_generate_img(model)
     plot_loss()
