@@ -22,7 +22,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 1
+debug = 0
 if debug == 1:
     num_epochs = 3
 else:
@@ -273,10 +273,9 @@ def generate_img(generator):
     save_image(out, output_folder + '/fig2_3.jpg', normalize=True)
 
 if __name__ == '__main__':
+    torch.manual_seed(999)
     if cuda == 1:
         torch.cuda.manual_seed_all(999)
-    else:
-        torch.manual_seed(999)
     if training_testing == 'train':
         train_data_loader, train_file_list = load_image(dataset_folder + '/train')
         model_G, model_D = training(train_data_loader, train_file_list)

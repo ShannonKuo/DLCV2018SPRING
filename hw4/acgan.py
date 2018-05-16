@@ -23,7 +23,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 1
+debug = 0
 train = 1
 attributeID = 8
 if debug == 1:
@@ -378,11 +378,11 @@ def generate_img(generator, discriminator):
 
 
 if __name__ == '__main__':
+    torch.manual_seed(999)
     np.random.seed(999)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(999)
-    else:
-        torch.manual_seed(999)
+
     if training_testing == 'train':
         train_data_loader, train_file_list = load_image('./hw4_data/train', './hw4_data/train.csv')
         model_G, model_D = training(train_data_loader, train_file_list)
