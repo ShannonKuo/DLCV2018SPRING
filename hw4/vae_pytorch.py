@@ -27,12 +27,12 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 1
-train = 1
+debug = 0
+training_testing = sys.argv[1]
 if debug == 1:
     num_epochs = 3
 else:
-    num_epochs = 50
+    num_epochs = 40
 batch_size = 32
 learning_rate = float(1e-5)
 MSEloss = []
@@ -47,20 +47,10 @@ img_transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
-parser = argparse.ArgumentParser(description='VAE Example')
 
-parser.add_argument('--lambdaKL', type=float, default=1e-5, metavar='N',
-                    help='lambdaKL (default: 1e-5)')
-args = parser.parse_args()
-args.cuda = torch.cuda.is_available()
-
-lambdaKL = args.lambdaKL
-#output_folder = './output_' + str(args.lambdaKL)
-#test_output_folder = './test_output_' + str(args.lambdaKL)
-dataset_folder = sys.argv[1]
-output_fig_folder = sys.argv[2]
-
-#device = torch.device("cuda" if args.cuda else "cpu")
+lambdaKL = 1e-5
+dataset_folder = sys.argv[2]
+output_fig_folder = sys.argv[3]
 
 def load_image(folder):
     print("load_image...")
@@ -141,7 +131,7 @@ class autoencoder(nn.Module):
         else:
             eps = torch.FloatTensor(std.size()).normal_()
         eps = Variable(eps)
-        if training_testing == 'training':
+        if training_testing == 'train':
             return eps.mul(std).add_(mu)
         else:
             for i in range(len(mu.data.cpu())):
@@ -179,7 +169,7 @@ def loss_function(recon_x, x, mu, logvar):
 
 def training(data_loader, file_list):
     print("start training")
-    if args.cuda:
+    if torch.cuda.is_available():
         model = autoencoder().cuda()
     else:
         model = autoencoder().cpu()
@@ -192,7 +182,7 @@ def training(data_loader, file_list):
         idx = 0
         train_loss = 0.0
         for img in data_loader:
-            if args.cuda:
+            if torch.cuda.is_available():
                 img = Variable(img).cuda()
             else:
                 img = Variable(img).cpu()
@@ -221,7 +211,7 @@ def testing(model, data_loader, file_list):
     ten_images = [0 for x in range(20)]
     choose_cnt = 0
     for i, img in enumerate(data_loader):
-        if args.cuda:
+        if torch.cuda.is_available():
             img = Variable(img).cuda()
         else:
             img = Variable(img).cpu()
@@ -250,7 +240,7 @@ def random_generate_img(model):
 
     for i in range(32):
         x = torch.randn(512)
-        if args.cuda:
+        if torch.cuda.is_available():
             x = Variable(x).cuda()
         else:
             x = Variable(x).cpu()
@@ -264,7 +254,17 @@ def random_generate_img(model):
 def plot_loss():
     if not os.path.exists(output_fig_folder):
         os.makedirs(output_fig_folder)
+    
+    file_KLD = open('./vae_KLDloss.txt')
+    for line in file_KLD:
+        KLDloss.append(float(line))
+    file_KLD.close()
 
+    file_MSE = open('./vae_MSEloss.txt')
+    for line in file_MSE:
+        MSEloss.append(float(line))
+    file_MSE.close()
+    
     fig=plt.figure(figsize=(15, 5))
     t = np.arange(0.0, len(MSEloss), 1.0)
     fig.add_subplot(1, 2, 1)
@@ -302,18 +302,20 @@ def calculate_tsne():
 
 
 if __name__ == '__main__':
-    if train == 1:
+    if training_testing == 'train':
         torch.manual_seed(999)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(999)
-        training_testing = 'training'
         train_data_loader, train_file_list = load_image(dataset_folder + '/train')
         model = training(train_data_loader, train_file_list)
-    else:
-        model = torch.load('./conv_autoencoder.pth')
-    training_testing = 'testing'
-    test_data_loader, test_file_list = load_image(dataset_folder + '/test')
-    testing(model, test_data_loader, test_file_list)
-    random_generate_img(model)
-    plot_loss()
-    calculate_tsne()
+    elif training_testing == 'test':
+        if torch.cuda.is_available():
+            model = autoencoder().cuda()
+        else:
+            model = autoencoder().cpu()
+        model.load_state_dict(torch.load('./conv_autoencoder.pth'))
+        test_data_loader, test_file_list = load_image(dataset_folder + '/test')
+        testing(model, test_data_loader, test_file_list)
+        random_generate_img(model)
+        plot_loss()
+        calculate_tsne()
