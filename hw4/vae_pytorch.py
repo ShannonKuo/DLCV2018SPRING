@@ -217,7 +217,7 @@ def testing(model, data_loader, file_list):
             img = Variable(img).cpu()
         output, mu, logvar = model(img)
         loss = nn.MSELoss()(output, img)
-        test_loss += loss.data[0] / len(data_loader)
+        test_loss += loss.data[0]
 
         pic = to_img(output.cpu().data)
         input = to_img(img.cpu().data)
@@ -258,7 +258,7 @@ def plot_loss():
     
     file_KLD = open('./vae_KLDloss.txt')
     for line in file_KLD:
-        KLDloss.append(float(line))
+        KLDloss.append(float(line) * 100000)
     file_KLD.close()
 
     file_MSE = open('./vae_MSEloss.txt')
