@@ -12,6 +12,7 @@ import torchvision.transforms.functional as F
 import scipy.misc
 import os
 import csv
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -28,7 +29,7 @@ attributeID = 8
 if debug == 1:
     num_epochs = 3
 else:
-    num_epochs = 50
+    num_epochs = 30
 batch_size = 32
 learning_rate = 1e-4
 
@@ -37,7 +38,10 @@ nl = 1
 ngf = 64
 ndf = 64
 nc = 3
-output_folder = './output_acgan'
+training_testing = sys.argv[1]
+dataset_folder = sys.argv[2]
+output_folder = sys.argv[3]
+
 all_loss_G = []
 all_loss_D = []
 all_accuracy = []
@@ -49,10 +53,6 @@ img_transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
-parser = argparse.ArgumentParser(description='ACGAN')
-
-args = parser.parse_args()
-args.cuda = torch.cuda.is_available()
 
 
 def load_image(folder, csv_path):
@@ -77,7 +77,6 @@ def load_image(folder, csv_path):
             label_one_hot[i][1] = 1
         else:
             label_one_hot[i][0] = 1
-    #label = torch.from_numpy(label).type(torch.FloatTensor)
     data = [(img_transform(x[i]), label_one_hot[i]) for i in range(len(x))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     print("finish load image")
@@ -95,7 +94,6 @@ def compute_acc(preds, labels):
     correct = 0
     preds_ = preds.data.max(1)[1]
     labels_ = labels.data.max(1)[1]
-    #correct = preds_.eq(labels.data).cpu().sum()
     for i in range(len(preds_)):
         if preds_[i] == labels_[i]:
             correct += 1
@@ -174,13 +172,13 @@ class ACGAN_discriminator(nn.Module):
 
 def training(data_loader, file_list):
     print("start training")
-    if args.cuda:
+    if torch.cuda.is_available():
         generator = ACGAN_generator().cuda()
     else:
         generator = ACGAN_generator().cpu()
     generator.apply(weights_init)
 
-    if args.cuda:
+    if torch.cuda.is_available():
         discriminator = ACGAN_discriminator().cuda()
     else:
         discriminator = ACGAN_discriminator().cpu()
@@ -191,9 +189,6 @@ def training(data_loader, file_list):
     optimizerG = torch.optim.Adam(generator.parameters(), lr=learning_rate, betas=(0.5,0.999))
     optimizerD = torch.optim.Adam(discriminator.parameters(), lr=learning_rate, betas=(0.5,0.999))
 
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-    
     all_loss = []
     for epoch in range(num_epochs):
         for i, data in enumerate(data_loader):
@@ -204,7 +199,7 @@ def training(data_loader, file_list):
             discriminator.zero_grad()
             img = data[0]
             one_hot_aux_label = data[1].type(torch.FloatTensor)
-            if args.cuda:
+            if torch.cuda.is_available():
                 img = Variable(img).cuda()
                 one_hot_aux_label = Variable(one_hot_aux_label).cuda()
             else:
@@ -213,7 +208,7 @@ def training(data_loader, file_list):
             dis_real_predict, aux_real_predict = discriminator(img)
             vector_size = dis_real_predict.shape[0]
 
-            if args.cuda:
+            if torch.cuda.is_available():
                 dis_real_label = Variable(torch.ones(vector_size)).cuda()
             else:
                 dis_real_label = Variable(torch.ones(vector_size)).cpu()
@@ -224,9 +219,17 @@ def training(data_loader, file_list):
             lossD_real.backward()
             D_x = dis_real_predict.mean().data[0]
 
-
             accuracy = compute_acc(aux_real_predict, one_hot_aux_label)
-            all_accuracy.append(accuracy)
+            file = open('./acgan_acc.txt', "a+")
+            file.write(str(accuracy))
+            file.write('\n')
+            file.close()
+
+            file = open('./acgan_loss_aux_real.txt', "a+")
+            file.write(str(aux_lossD_real.data[0]))
+            file.write('\n')
+            file.close()
+
 
             #log(1-D(G(z)))
             noise = torch.randn(vector_size, nz)#, 1, 1)
@@ -240,13 +243,14 @@ def training(data_loader, file_list):
             random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
             noise = torch.cat((noise, random_aux), dim=1)
 
-            if args.cuda:
+            if torch.cuda.is_available():
                 noise = Variable(noise).cuda()
             else:
                 noise = Variable(noise).cpu()
             fake_img = generator(noise)
             dis_fake_predict, aux_fake_predict = discriminator(fake_img.detach())
-            if args.cuda:
+
+            if torch.cuda.is_available():
                 dis_fake_label = Variable(torch.zeros(vector_size)).cuda()
                 random_aux_label = Variable(random_aux).cuda()
             else:
@@ -255,13 +259,16 @@ def training(data_loader, file_list):
             
             dis_lossD_fake = nn.BCELoss()(dis_fake_predict, dis_fake_label)
             aux_lossD_fake = nn.BCELoss()(aux_fake_predict, random_aux_label)
-            all_aux_lossD_fake.append(aux_lossD_fake.data[0])
             D_G_z1 = dis_fake_predict.mean().data[0]
             lossD_fake = dis_lossD_fake + aux_lossD_fake
             lossD_fake.backward()
             lossD = lossD_real + lossD_fake
-            all_loss_D.append(lossD.data[0])
             optimizerD.step()
+
+            file = open('./acgan_loss_aux_fake.txt', "a+")
+            file.write(str(aux_lossD_fake.data[0]))
+            file.write('\n')
+            file.close()
 
             ############################
             # (2) Update G network: maximize log(D(G(z)))
@@ -273,9 +280,12 @@ def training(data_loader, file_list):
             aux_lossG = nn.BCELoss()(output_aux, random_aux_label)
             lossG = dis_lossG + aux_lossG
             lossG.backward()
-            all_loss_G.append(lossG.data[0])
             D_G_z2 = output.mean().data[0]
             optimizerG.step()
+            file = open('./acgan_lossG.txt', "a+")
+            file.write(str(lossG.data[0]))
+            file.write('\n')
+            file.close()
 
             # ===================log========================
             if i % 300 == 0:
@@ -283,8 +293,6 @@ def training(data_loader, file_list):
                      % (epoch + 1, num_epochs, i, len(data_loader),
                      lossD.data[0], lossG.data[0], D_x, D_G_z1, D_G_z2))
 
-        generate_img(generator, discriminator)
-        plot_loss()
 
     torch.save(generator.state_dict(), './acgan_generator.pth')
     torch.save(discriminator.state_dict(), './acgan_discriminator.pth')
@@ -294,37 +302,63 @@ def plot_loss():
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
+    file_real = open('./acgan_loss_aux_real.txt')
+    for line in file_real:
+        all_aux_lossD_real.append(float(line))
+    file_real.close()
+
+    file_fake = open('./acgan_loss_aux_fake.txt')
+    for line in file_fake:
+        all_aux_lossD_fake.append(float(line))
+    file_fake.close()
+
+    file_acc = open('./acgan_acc.txt')
+    for line in file_acc:
+        all_accuracy.append(float(line))
+    file_acc.close()
+
+    file_G = open('./acgan_lossG.txt')
+    for line in file_G:
+        all_loss_G.append(float(line))
+    file_G.close()
+
     fig=plt.figure(figsize=(15, 7.5))
-    t = np.arange(0.0, len(all_loss_D), 1.0)
-    fig.add_subplot(1, 3, 1)
+    t = np.arange(0.0, len(all_aux_lossD_real), 1.0)
+    fig.add_subplot(2, 2, 1)
     line, = plt.plot(t, all_aux_lossD_real, lw=2)
     plt.xlabel('steps')
-    plt.ylabel('Discriminator_loss')
+    plt.ylabel('loss')
     plt.title('aux_lossD_real vs steps')
 
-    t = np.arange(0.0, len(all_loss_G), 1.0)
-    fig.add_subplot(1, 3, 2)
+    t = np.arange(0.0, len(all_aux_lossD_fake), 1.0)
+    fig.add_subplot(2, 2, 2)
     line, = plt.plot(t, all_aux_lossD_fake, lw=2)
     plt.xlabel('steps')
     plt.ylabel('loss')
     plt.title('aux_lossD_fake vs steps')
  
     t = np.arange(0.0, len(all_accuracy), 1.0)
-    fig.add_subplot(1, 3, 3)
+    fig.add_subplot(2, 2, 3)
     line, = plt.plot(t, all_accuracy, lw=2)
     plt.xlabel('steps')
     plt.ylabel('accuracy')
     plt.title('accuracy vs steps')
 
+    t = np.arange(0.0, len(all_loss_G), 1.0)
+    fig.add_subplot(2, 2, 4)
+    line, = plt.plot(t, all_loss_G, lw=2)
+    plt.xlabel('steps')
+    plt.ylabel('loss')
+    plt.title('loss_G vs steps')
 
     plt.savefig(output_folder + '/fig2_2.jpg')
     plt.close()
 
 def generate_img(generator, discriminator):
     generator.eval()
-    noise = torch.randn(10, nz)#, 1, 1)
+    noise = torch.randn(10, nz)
     noise = torch.cat((noise, noise), dim=0)
-    random_aux = np.zeros((20, 2))#, 1, 1))
+    random_aux = np.zeros((20, 2))
     for i in range(len(random_aux)):
         if i < 10:
             random_aux[i][1] = 1
@@ -332,28 +366,29 @@ def generate_img(generator, discriminator):
             random_aux[i][0] = 1
     random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
     noise = torch.cat((noise, random_aux), dim=1)
-    if args.cuda:
+    if torch.cuda.is_available():
         noise = Variable(noise).cuda()
     else:
         noise = Variable(noise).cpu()
     fake_img = generator(noise)
     dis_fake_predict, aux_fake_predict = discriminator(fake_img.detach())
-    print(aux_fake_predict.data.max(1)[1])
     pic = to_img(fake_img.cpu().data)
     out = torchvision.utils.make_grid(pic, nrow=10)
     save_image(out, output_folder + '/fig2_3.jpg', normalize=True)
 
 
 if __name__ == '__main__':
-    if train == 1:
+    if training_testing == 'train':
         np.random.seed(999)
         torch.manual_seed(999)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(999)
         train_data_loader, train_file_list = load_image('./hw4_data/train', './hw4_data/train.csv')
         model_G, model_D = training(train_data_loader, train_file_list)
-    else:
-        model_G = torch.load('./acgan_generator.pth')
-        model_D = torch.load('./acgan_discriminator.pth')
-    plot_loss()
-    generate_img(model_G, model_D)
+    elif training_testing == 'test':
+        model_G = ACGAN_generator() 
+        model_D = ACGAN_discriminator() 
+        model_G.load_state_dict(torch.load('./acgan_generator.pth'))
+        model_D.load_state_dict(torch.load('./acgan_discriminator.pth'))
+        plot_loss()
+        generate_img(model_G, model_D)
