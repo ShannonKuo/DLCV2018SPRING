@@ -11,6 +11,7 @@ from torchvision.utils import save_image
 import torchvision.transforms.functional as F
 import scipy.misc
 import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -22,11 +23,10 @@ def to_img(x):
     return x
 
 debug = 0
-train = 1
 if debug == 1:
     num_epochs = 3
 else:
-    num_epochs = 50
+    num_epochs = 30
 batch_size = 32
 learning_rate = 1e-5
 
@@ -34,7 +34,10 @@ nz = 100
 ngf = 64
 ndf = 64
 nc = 3
-output_folder = './output_gan'
+
+training_testing = sys.argv[1]
+dataset_folder = sys.argv[2]
+output_folder = sys.argv[3]
 all_loss_G = []
 all_loss_D = []
 all_accuracy = []
@@ -43,10 +46,6 @@ img_transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
-parser = argparse.ArgumentParser(description='GAN')
-
-args = parser.parse_args()
-args.cuda = torch.cuda.is_available()
 
 
 def load_image(folder):
@@ -134,13 +133,13 @@ class GAN_discriminator(nn.Module):
 
 def training(data_loader, file_list):
     print("start training")
-    if args.cuda:
+    if torch.cuda.is_available():
         generator = GAN_generator().cuda()
     else:
         generator = GAN_generator().cpu()
     generator.apply(weights_init)
 
-    if args.cuda:
+    if torch.cuda.is_available():
         discriminator = GAN_discriminator().cuda()
     else:
         discriminator = GAN_discriminator().cpu()
@@ -148,6 +147,7 @@ def training(data_loader, file_list):
 
     generator.train()
     discriminator.train()
+
     optimizerG = torch.optim.Adam(generator.parameters(), lr=learning_rate, betas=(0.5,0.999))
     optimizerD = torch.optim.Adam(discriminator.parameters(), lr=learning_rate, betas=(0.5,0.999))
 
@@ -163,14 +163,14 @@ def training(data_loader, file_list):
             #log(D(x))
             discriminator.zero_grad()
 
-            if args.cuda:
+            if torch.cuda.is_available():
                 img = Variable(img).cuda()
             else:
                 img = Variable(img).cpu()
             real_predict = discriminator(img)
             vector_size = real_predict.shape[0]
 
-            if args.cuda:
+            if torch.cuda.is_available():
                 real_label = Variable(torch.ones(vector_size)).cuda()
             else:
                 real_label = Variable(torch.ones(vector_size)).cpu()
@@ -178,7 +178,7 @@ def training(data_loader, file_list):
             D_x = real_predict.mean().data[0]
 
             #log(1-D(G(z)))
-            if args.cuda:
+            if torch.cuda.is_available():
                 noise = Variable(torch.randn(vector_size, nz, 1, 1)).cuda()
             else:
                 noise = Variable(torch.randn(vector_size, nz, 1, 1)).cpu()
@@ -186,7 +186,7 @@ def training(data_loader, file_list):
             fake_img = generator(noise)
             fake_predict = discriminator(fake_img.detach())
 
-            if args.cuda:
+            if torch.cuda.is_available():
                 fake_label = Variable(torch.zeros(vector_size)).cuda()
             else:
                 fake_label = Variable(torch.zeros(vector_size)).cpu()
@@ -195,8 +195,12 @@ def training(data_loader, file_list):
             D_G_z1 = fake_predict.mean().data[0]
             lossD = lossD_real + lossD_fake
             lossD.backward()
-            all_loss_D.append(lossD.data[0])
             optimizerD.step()
+
+            file_D = open('./gan_lossD.txt', "a+")
+            file_D.write(str(lossD.data[0]))
+            file_D.write('\n')
+            file_D.close()
 
             ############################
             # (2) Update G network: maximize log(D(G(z)))
@@ -206,17 +210,18 @@ def training(data_loader, file_list):
 
             lossG = nn.BCELoss()(output, real_label)
             lossG.backward()
-            all_loss_G.append(lossG.data[0])
             D_G_z2 = output.mean().data[0]
             optimizerG.step()
+
+            file_G = open('./gan_lossG.txt', "a+")
+            file_G.write(str(lossG.data[0]))
+            file_G.write('\n')
+            file_G.close()
 
             # ===================log========================
             print('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f'
                  % (epoch + 1, num_epochs, i, len(data_loader),
                  lossD.data[0], lossG.data[0], D_x, D_G_z1, D_G_z2))
-
-        generate_img(generator)
-        plot_loss()
 
     torch.save(generator.state_dict(), './gan_generator.pth')
     torch.save(discriminator.state_dict(), './gan_discriminator.pth')
@@ -226,6 +231,16 @@ def plot_loss():
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
+    file_D = open('./gan_lossD.txt')
+    for line in file_D:
+        all_loss_D.append(float(line))
+    file_D.close()
+
+    file_G = open('./gan_lossG.txt')
+    for line in file_G:
+        all_loss_G.append(float(line))
+    file_G.close()
+    
     fig=plt.figure(figsize=(15, 5))
     t = np.arange(0.0, len(all_loss_D), 1.0)
     fig.add_subplot(1, 2, 1)
@@ -245,22 +260,26 @@ def plot_loss():
     plt.close()
 
 def generate_img(generator):
-    noise = Variable(torch.randn(32, nz, 1, 1)).cuda()
+    if torch.cuda.is_available():
+        noise = Variable(torch.randn(32, nz, 1, 1)).cuda()
+    else:
+        noise = Variable(torch.randn(32, nz, 1, 1)).cpu()
     fake_img = generator(noise)
     pic = to_img(fake_img.cpu().data)
     out = torchvision.utils.make_grid(pic, nrow=8)
     save_image(out, output_folder + '/fig2_3.jpg', normalize=True)
 
-
 if __name__ == '__main__':
-    if train == 1:
+    if training_testing == 'train':
         torch.manual_seed(999)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(999)
-        train_data_loader, train_file_list = load_image('./hw4_data/train')
+        train_data_loader, train_file_list = load_image(dataset_folder + '/train')
         model_G, model_D = training(train_data_loader, train_file_list)
-    else:
-        model_G = torch.load('./gan_generator.pth')
-        model_D = torch.load('./gan_discriminator.pth')
-    plot_loss()
-    generate_img(model_G)
+    elif training_testing == 'test':
+        model_G = GAN_generator()
+        model_D = GAN_discriminator()
+        model_G.load_state_dict(torch.load('./gan_generator.pth'))
+        model_D.load_state_dict(torch.load('./gan_discriminator.pth'))
+        plot_loss()
+        generate_img(model_G)
