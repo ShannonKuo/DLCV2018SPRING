@@ -198,7 +198,7 @@ def training(data_loader, file_list):
         # ===================log========================
         print('epoch [{}/{}], loss:{:.4f}'.
                 format(epoch+1, num_epochs, train_loss))
-    torch.save(model.state_dict(), './conv_autoencoder.pth')
+        torch.save(model.state_dict(), './conv_autoencoder.pth')
     return model
 
 def testing(model, data_loader, file_list):
@@ -233,6 +233,7 @@ def testing(model, data_loader, file_list):
     print("test_loss: ", test_loss)
 
 def random_generate_img(model):
+    print("random generate image...")
     model.eval()
     images = []
     if not os.path.exists(output_fig_folder):
@@ -302,10 +303,12 @@ def calculate_tsne():
 
 
 if __name__ == '__main__':
+
+    torch.manual_seed(999)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(999)
+
     if training_testing == 'train':
-        torch.manual_seed(999)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(999)
         train_data_loader, train_file_list = load_image(dataset_folder + '/train')
         model = training(train_data_loader, train_file_list)
     elif training_testing == 'test':

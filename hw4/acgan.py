@@ -366,10 +366,10 @@ def generate_img(generator, discriminator):
             random_aux[i][0] = 1
     random_aux = torch.from_numpy(random_aux).type(torch.FloatTensor)
     noise = torch.cat((noise, random_aux), dim=1)
-    if torch.cuda.is_available():
-        noise = Variable(noise).cuda()
-    else:
-        noise = Variable(noise).cpu()
+    #if torch.cuda.is_available():
+    #    noise = Variable(noise).cuda()
+    #else:
+    noise = Variable(noise).cpu()
     fake_img = generator(noise)
     dis_fake_predict, aux_fake_predict = discriminator(fake_img.detach())
     pic = to_img(fake_img.cpu().data)
@@ -378,17 +378,18 @@ def generate_img(generator, discriminator):
 
 
 if __name__ == '__main__':
-    if training_testing == 'train':
-        np.random.seed(999)
+    np.random.seed(999)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(999)
+    else:
         torch.manual_seed(999)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(999)
+    if training_testing == 'train':
         train_data_loader, train_file_list = load_image('./hw4_data/train', './hw4_data/train.csv')
         model_G, model_D = training(train_data_loader, train_file_list)
     elif training_testing == 'test':
         model_G = ACGAN_generator() 
         model_D = ACGAN_discriminator() 
-        model_G.load_state_dict(torch.load('./acgan_generator.pth', map_location={'cuda:0': 'cpu'}))
-        model_D.load_state_dict(torch.load('./acgan_discriminator.pth', map_location={'cuda:0': 'cpu'}))
+        model_G.load_state_dict(torch.load('./acgan_generator.pth'))
+        model_D.load_state_dict(torch.load('./acgan_discriminator.pth'))
         plot_loss()
         generate_img(model_G, model_D)

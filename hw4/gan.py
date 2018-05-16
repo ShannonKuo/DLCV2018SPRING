@@ -22,7 +22,7 @@ def to_img(x):
     x = x.view(x.size(0), 3, 64, 64)
     return x
 
-debug = 0
+debug = 1
 if debug == 1:
     num_epochs = 3
 else:
@@ -41,7 +41,10 @@ output_folder = sys.argv[3]
 all_loss_G = []
 all_loss_D = []
 all_accuracy = []
-
+if torch.cuda.is_available():
+    cuda = 1
+else:
+    cuda = 0
 img_transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
@@ -133,13 +136,13 @@ class GAN_discriminator(nn.Module):
 
 def training(data_loader, file_list):
     print("start training")
-    if torch.cuda.is_available():
+    if cuda == 1:
         generator = GAN_generator().cuda()
     else:
         generator = GAN_generator().cpu()
     generator.apply(weights_init)
 
-    if torch.cuda.is_available():
+    if cuda == 1:
         discriminator = GAN_discriminator().cuda()
     else:
         discriminator = GAN_discriminator().cpu()
@@ -163,14 +166,14 @@ def training(data_loader, file_list):
             #log(D(x))
             discriminator.zero_grad()
 
-            if torch.cuda.is_available():
+            if cuda == 1:
                 img = Variable(img).cuda()
             else:
                 img = Variable(img).cpu()
             real_predict = discriminator(img)
             vector_size = real_predict.shape[0]
 
-            if torch.cuda.is_available():
+            if cuda == 1:
                 real_label = Variable(torch.ones(vector_size)).cuda()
             else:
                 real_label = Variable(torch.ones(vector_size)).cpu()
@@ -178,7 +181,7 @@ def training(data_loader, file_list):
             D_x = real_predict.mean().data[0]
 
             #log(1-D(G(z)))
-            if torch.cuda.is_available():
+            if cuda == 1:
                 noise = Variable(torch.randn(vector_size, nz, 1, 1)).cuda()
             else:
                 noise = Variable(torch.randn(vector_size, nz, 1, 1)).cpu()
@@ -186,7 +189,7 @@ def training(data_loader, file_list):
             fake_img = generator(noise)
             fake_predict = discriminator(fake_img.detach())
 
-            if torch.cuda.is_available():
+            if cuda == 1:
                 fake_label = Variable(torch.zeros(vector_size)).cuda()
             else:
                 fake_label = Variable(torch.zeros(vector_size)).cpu()
@@ -223,8 +226,8 @@ def training(data_loader, file_list):
                  % (epoch + 1, num_epochs, i, len(data_loader),
                  lossD.data[0], lossG.data[0], D_x, D_G_z1, D_G_z2))
 
-    torch.save(generator.state_dict(), './gan_generator.pth')
-    torch.save(discriminator.state_dict(), './gan_discriminator.pth')
+        torch.save(generator.state_dict(), './gan_generator.pth')
+        torch.save(discriminator.state_dict(), './gan_discriminator.pth')
     return generator, discriminator
 
 def plot_loss():
@@ -260,20 +263,21 @@ def plot_loss():
     plt.close()
 
 def generate_img(generator):
-    if torch.cuda.is_available():
-        noise = Variable(torch.randn(32, nz, 1, 1)).cuda()
-    else:
-        noise = Variable(torch.randn(32, nz, 1, 1)).cpu()
+    #if cuda == 1:
+    #    noise = Variable(torch.randn(32, nz, 1, 1)).cuda()
+    #else:
+    noise = Variable(torch.randn(32, nz, 1, 1)).cpu()
     fake_img = generator(noise)
     pic = to_img(fake_img.cpu().data)
     out = torchvision.utils.make_grid(pic, nrow=8)
     save_image(out, output_folder + '/fig2_3.jpg', normalize=True)
 
 if __name__ == '__main__':
-    if training_testing == 'train':
+    if cuda == 1:
+        torch.cuda.manual_seed_all(999)
+    else:
         torch.manual_seed(999)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(999)
+    if training_testing == 'train':
         train_data_loader, train_file_list = load_image(dataset_folder + '/train')
         model_G, model_D = training(train_data_loader, train_file_list)
     elif training_testing == 'test':
