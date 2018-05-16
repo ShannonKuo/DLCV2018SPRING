@@ -322,7 +322,7 @@ def plot_loss():
         all_loss_G.append(float(line))
     file_G.close()
 
-    fig=plt.figure(figsize=(15, 7.5))
+    fig=plt.figure(figsize=(15, 10))
     t = np.arange(0.0, len(all_aux_lossD_real), 1.0)
     fig.add_subplot(2, 2, 1)
     line, = plt.plot(t, all_aux_lossD_real, lw=2)
@@ -351,7 +351,7 @@ def plot_loss():
     plt.ylabel('loss')
     plt.title('loss_G vs steps')
 
-    plt.savefig(output_folder + '/fig2_2.jpg')
+    plt.savefig(output_folder + '/fig3_2.jpg')
     plt.close()
 
 def generate_img(generator, discriminator):
@@ -374,7 +374,7 @@ def generate_img(generator, discriminator):
     dis_fake_predict, aux_fake_predict = discriminator(fake_img.detach())
     pic = to_img(fake_img.cpu().data)
     out = torchvision.utils.make_grid(pic, nrow=10)
-    save_image(out, output_folder + '/fig2_3.jpg', normalize=True)
+    save_image(out, output_folder + '/fig3_3.jpg', normalize=True)
 
 
 if __name__ == '__main__':
@@ -388,7 +388,7 @@ if __name__ == '__main__':
     elif training_testing == 'test':
         model_G = ACGAN_generator() 
         model_D = ACGAN_discriminator() 
-        model_G.load_state_dict(torch.load('./acgan_generator.pth'))
-        model_D.load_state_dict(torch.load('./acgan_discriminator.pth'))
+        model_G.load_state_dict(torch.load('./acgan_generator.pth', map_location={'cuda:0': 'cpu'}))
+        model_D.load_state_dict(torch.load('./acgan_discriminator.pth', map_location={'cuda:0': 'cpu'}))
         plot_loss()
         generate_img(model_G, model_D)
