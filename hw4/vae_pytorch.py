@@ -198,7 +198,7 @@ def training(data_loader, file_list):
         # ===================log========================
         print('epoch [{}/{}], loss:{:.4f}'.
                 format(epoch+1, num_epochs, train_loss))
-        torch.save(model.state_dict(), './conv_autoencoder.pth')
+        torch.save(model.state_dict(), './vae.pth')
     return model
 
 def testing(model, data_loader, file_list):
@@ -217,7 +217,7 @@ def testing(model, data_loader, file_list):
             img = Variable(img).cpu()
         output, mu, logvar = model(img)
         loss = nn.MSELoss()(output, img)
-        test_loss += loss.data[0] / len(data_loader)
+        test_loss += loss.data[0]
 
         pic = to_img(output.cpu().data)
         input = to_img(img.cpu().data)
@@ -258,7 +258,7 @@ def plot_loss():
     
     file_KLD = open('./vae_KLDloss.txt')
     for line in file_KLD:
-        KLDloss.append(float(line))
+        KLDloss.append(float(line) * 100000)
     file_KLD.close()
 
     file_MSE = open('./vae_MSEloss.txt')
@@ -316,7 +316,7 @@ if __name__ == '__main__':
             model = autoencoder().cuda()
         else:
             model = autoencoder().cpu()
-        model.load_state_dict(torch.load('./conv_autoencoder.pth'))
+        model.load_state_dict(torch.load('./vae.th'))
         test_data_loader, test_file_list = load_image(dataset_folder + '/test')
         testing(model, test_data_loader, test_file_list)
         random_generate_img(model)
