@@ -14,7 +14,7 @@ import os
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
-
+from scipy.signal import butter, lfilter, freqz
 
 def to_img(x):
     x = 0.5 * (x + 1)
@@ -38,9 +38,6 @@ nc = 3
 training_testing = sys.argv[1]
 dataset_folder = sys.argv[2]
 output_folder = sys.argv[3]
-all_loss_G = []
-all_loss_D = []
-all_accuracy = []
 if torch.cuda.is_available():
     cuda = 1
 else:
@@ -230,7 +227,23 @@ def training(data_loader, file_list):
         torch.save(discriminator.state_dict(), './gan_discriminator.pth')
     return generator, discriminator
 
+def butter_lowpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return b, a
+
+def butter_lowpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
+
+
 def plot_loss():
+    all_loss_G = []
+    all_loss_D = []
+    all_accuracy = []
+    
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
@@ -244,6 +257,9 @@ def plot_loss():
         all_loss_G.append(float(line))
     file_G.close()
     
+    all_loss_G = butter_lowpass_filter(all_loss_G, 3.667, 100.0, 6)
+    all_loss_D = butter_lowpass_filter(all_loss_D, 3.667, 100.0, 6)
+
     fig=plt.figure(figsize=(15, 5))
     t = np.arange(0.0, len(all_loss_D), 1.0)
     fig.add_subplot(1, 2, 1)

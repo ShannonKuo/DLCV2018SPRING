@@ -18,8 +18,7 @@ import scipy.misc
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-#print(torch.__version__)
-
+from scipy.signal import butter, lfilter, freqz
 
 def to_img(x):
     x = 0.5 * (x + 1)
@@ -251,6 +250,16 @@ def random_generate_img(model):
     out = torchvision.utils.make_grid(images, nrow=8)
     save_image(out, output_fig_folder + '/fig1_4.jpg', normalize=True)
 
+def butter_lowpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return b, a
+
+def butter_lowpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
 
 def plot_loss():
     if not os.path.exists(output_fig_folder):
@@ -265,19 +274,21 @@ def plot_loss():
     for line in file_MSE:
         MSEloss.append(float(line))
     file_MSE.close()
+    MSEloss_low = butter_lowpass_filter(MSEloss, 3.667, 30.0, 6)
+    KLDloss_low = butter_lowpass_filter(KLDloss, 3.667, 30.0, 6)
     
     fig=plt.figure(figsize=(15, 5))
-    t = np.arange(0.0, len(MSEloss), 1.0)
+    t = np.arange(0.0, len(MSEloss_low), 1.0)
     fig.add_subplot(1, 2, 1)
-    line, = plt.plot(t, MSEloss, lw=2)
+    line, = plt.plot(t, MSEloss_low, lw=2)
     plt.xlabel('steps')
     plt.ylabel('MSE_loss')
     plt.title('MSE_loss vs steps')
     plt.ylim(0,0.5)
 
-    t = np.arange(0.0, len(KLDloss), 1.0)
+    t = np.arange(0.0, len(KLDloss_low), 1.0)
     fig.add_subplot(1, 2, 2)
-    line, = plt.plot(t, KLDloss, lw=2)
+    line, = plt.plot(t, KLDloss_low, lw=2)
     plt.xlabel('steps')
     plt.ylabel('KLD_loss')
     plt.title('KLD_loss vs steps')
@@ -316,7 +327,7 @@ if __name__ == '__main__':
             model = autoencoder().cuda()
         else:
             model = autoencoder().cpu()
-        model.load_state_dict(torch.load('./vae.th'))
+        model.load_state_dict(torch.load('./vae.pth'))
         test_data_loader, test_file_list = load_image(dataset_folder + '/test')
         testing(model, test_data_loader, test_file_list)
         random_generate_img(model)

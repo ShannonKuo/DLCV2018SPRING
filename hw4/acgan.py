@@ -15,7 +15,7 @@ import csv
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
-
+from scipy.signal import butter, lfilter, freqz
 
 def to_img(x):
     x = 0.5 * (x + 1)
@@ -42,11 +42,6 @@ training_testing = sys.argv[1]
 dataset_folder = sys.argv[2]
 output_folder = sys.argv[3]
 
-all_loss_G = []
-all_loss_D = []
-all_accuracy = []
-all_aux_lossD_real = []
-all_aux_lossD_fake = []
 
 
 img_transform = transforms.Compose([
@@ -214,7 +209,6 @@ def training(data_loader, file_list):
                 dis_real_label = Variable(torch.ones(vector_size)).cpu()
             dis_lossD_real = nn.BCELoss()(dis_real_predict, dis_real_label)
             aux_lossD_real = nn.BCELoss()(aux_real_predict, one_hot_aux_label)
-            all_aux_lossD_real.append(aux_lossD_real.data[0])
             lossD_real = dis_lossD_real + aux_lossD_real
             lossD_real.backward()
             D_x = dis_real_predict.mean().data[0]
@@ -298,7 +292,24 @@ def training(data_loader, file_list):
     torch.save(discriminator.state_dict(), './acgan_discriminator.pth')
     return generator, discriminator
 
+def butter_lowpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return b, a
+
+def butter_lowpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
+
+
 def plot_loss():
+    all_loss_G = []
+    all_accuracy = []
+    all_aux_lossD_real = []
+    all_aux_lossD_fake = []
+    
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
@@ -322,6 +333,11 @@ def plot_loss():
         all_loss_G.append(float(line))
     file_G.close()
 
+    all_aux_lossD_real = butter_lowpass_filter(all_aux_lossD_real, 3.667, 100.0, 6)
+    all_aux_lossD_fake = butter_lowpass_filter(all_aux_lossD_fake, 3.667, 100.0, 6)
+    all_accuracy = butter_lowpass_filter(all_accuracy, 3.667, 100.0, 6)
+    all_loss_G = butter_lowpass_filter(all_loss_G, 3.667, 100.0, 6)
+    
     fig=plt.figure(figsize=(15, 10))
     t = np.arange(0.0, len(all_aux_lossD_real), 1.0)
     fig.add_subplot(2, 2, 1)
