@@ -198,7 +198,7 @@ def training(data_loader, file_list):
         # ===================log========================
         print('epoch [{}/{}], loss:{:.4f}'.
                 format(epoch+1, num_epochs, train_loss))
-        torch.save(model.state_dict(), './conv_autoencoder.pth')
+        torch.save(model.state_dict(), './vae.pth')
     return model
 
 def testing(model, data_loader, file_list):
@@ -316,7 +316,7 @@ if __name__ == '__main__':
             model = autoencoder().cuda()
         else:
             model = autoencoder().cpu()
-        model.load_state_dict(torch.load('./conv_autoencoder.pth'))
+        model.load_state_dict(torch.load('./vae.th'))
         test_data_loader, test_file_list = load_image(dataset_folder + '/test')
         testing(model, test_data_loader, test_file_list)
         random_generate_img(model)
