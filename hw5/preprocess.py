@@ -22,6 +22,7 @@ from HW5_data.reader import readShortVideo
 from HW5_data.reader import getVideoList
 #import matplotlib.pyplot as plt
 #from scipy.signal import butter, lfilter, freqz
+
 debug = 1
 batch_size = 32
 learning_rate = 1e-5
@@ -75,6 +76,12 @@ class training_model(nn.Module):
         
         self.fcn = nn.Linear(2048, n_class)
         self.softmax = nn.Softmax()
+
+    def output_feature(self, x):
+        x = self.pretrained(x)
+        x = torch.squeeze(x, 1)
+        return(x)
+
     def forward(self, x):
         x = self.pretrained(x)
         x = self.fcn(x)
@@ -135,12 +142,12 @@ def get_feature(data_loader, model, video_frame_num):
         img = data[0].type(torch.FloatTensor)
         true_label = data[1].type(torch.FloatTensor)
         if torch.cuda.is_available():
-            imgs = Variable(imgs).cuda()
+            img = Variable(img).cuda()
             true_label = Variable(true_label).cuda()
         else:
-            imgs = Variable(imgs).cpu()
+            img = Variable(img).cpu()
             true_label = Variable(true_label).cpu()
-        outputs = model(imgs)
+        outputs = model.output_feature(img)
         
         for j, output in enumerate(outputs):
             if video_frame_num[video_id] > 1:
@@ -149,7 +156,10 @@ def get_feature(data_loader, model, video_frame_num):
 
             else:
                 array_feature = np.array(features_one_video)
+                array_feature = np.reshape(array_feature, (-1, 2048))
+                print(array_feature.shape)
                 avg_feature = np.mean(array_feature, axis = 0)
+                print(avg_feature.shape)
                 features.append(avg_feature)
                 video_id += 1
                 features_one_video = []
@@ -161,7 +171,7 @@ if __name__ == '__main__':
     train_dataloader, video_frame_num = extractFrames(folder, csvpath)
     #valid_dataloader = extractFrames("./HW5_data/TrimmedVideos/video/valid/")
     model = training(train_dataloader)
-    #train_features = get_feature(train_dataloader, model, video_frame_num)
+    train_features = get_feature(train_dataloader, model, video_frame_num)
     
     #valid_features = get_feature(valid_dataloader, model)
     
