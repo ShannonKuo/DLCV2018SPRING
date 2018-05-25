@@ -1,5 +1,5 @@
-#import matplotlib
-#matplotlib.use('Agg')
+import matplotlib
+matplotlib.use('Agg')
 import torch
 import argparse
 import torchvision
@@ -24,14 +24,14 @@ from HW5_data.reader import getVideoList
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 1
+debug = 0
 batch_size = 32
 learning_rate = 1e-5
 n_class = 11
 if debug == 1:
     num_epochs = 3
 else:
-    num_epochs = 10
+    num_epochs = 30
 
 img_transform = transforms.Compose([
     transforms.ToTensor(),
