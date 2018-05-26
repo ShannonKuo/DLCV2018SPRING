@@ -27,10 +27,10 @@ from scipy.signal import butter, lfilter, freqz
 debug = 0
 read_valid_txt = 0
 batch_size = 4
-learning_rate = 1e-5
+learning_rate = 1e-4
 n_class = 11
 if debug == 1:
-    num_epochs = 3
+    num_epochs = 1
 else:
     num_epochs = 30
 
@@ -88,8 +88,12 @@ def extractFrames(folder, csvpath, load, train):
                 labels = pickle.load(fp)
             with open("./video_frame_num.txt", "rb") as fp:   # Unpickling
                 video_frame_num = pickle.load(fp)
-
-    data = [(frames[i], labels[i]) for i in range(len(frames))]
+    print(len(frames))
+    print(len(labels))
+    if debug == 1:
+        data = [(frames[i], labels[i]) for i in range(5)]
+    else:
+        data = [(frames[i], labels[i]) for i in range(len(frames))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     return dataloader, video_frame_num
 
@@ -104,8 +108,16 @@ class training_model(nn.Module):
 
     def output_feature(self, x):
         x = self.pretrained(x)
-        x = torch.squeeze(x, 1)
-        return(x)
+        avg_feature = np.mean(np.array(x.data), axis = 0)
+        avg_feature = np.reshape(avg_feature, (1, 2048))
+        avg_feature = torch.from_numpy(avg_feature)
+        avg_feature = torch.squeeze(avg_feature, 1)
+        if torch.cuda.is_available():
+            avg_feature = Variable(avg_feature).cuda()
+        else:
+            avg_feature = Variable(avg_feature).cpu()
+
+        return(avg_feature)
 
     def forward(self, x):
         x = self.pretrained(x)
@@ -250,8 +262,8 @@ def calculate_acc_from_txt(csvpath):
         predict.append(int(line[:-1]))
     print("len of true labels: " + str(len(labels)))
     print("leb of predict lables: " + str(len(predict)))
-    for i in range(len(labels)):
-        if labels[i] == predict[i]:
+    for i in range(len(predict)):
+        if int(labels[i]) == int(predict[i]):
             correct += 1
     file.close()
     print("acc score: " + str(float(correct) / len(predict)))
@@ -259,33 +271,15 @@ def calculate_acc_from_txt(csvpath):
 
 def get_feature(data_loader, model, video_frame_num):
     print("get feature...")
-    features_one_video = []
     features = []
-    video_id = 0
     for i, data in enumerate(data_loader):
         img = data[0].type(torch.FloatTensor)
-        true_label = data[1].type(torch.FloatTensor)
-        true_label = true_label[0].view(1, n_class)
         if torch.cuda.is_available():
             img = Variable(img).cuda()
-            true_label = Variable(true_label).cuda()
         else:
             img = Variable(img).cpu()
-            true_label = Variable(true_label).cpu()
         outputs = model.output_feature(img)
-        
-        for j, output in enumerate(outputs):
-            if video_frame_num[video_id] > 1:
-                features_one_video.append(output)
-                video_frame_num[video_id] -= 1
-
-            else:
-                array_feature = np.array(features_one_video)
-                array_feature = np.reshape(array_feature, (-1, 2048))
-                avg_feature = np.mean(array_feature, axis = 0)
-                features.append(avg_feature)
-                video_id += 1
-                features_one_video = []
+        features.append(outputs)    
     return features
 
 if __name__ == '__main__':
@@ -304,7 +298,7 @@ if __name__ == '__main__':
     if read_valid_txt == 1:
         calculate_acc_from_txt(valid_csvpath)
     else:
-        train_dataloader, train_video_frame_num = extractFrames(train_folder, train_csvpath, 0, "train")
+        train_dataloader, train_video_frame_num = extractFrames(train_folder, train_csvpath, 1, "train")
         valid_dataloader, valid_video_frame_num = extractFrames(valid_folder, valid_csvpath, 0, "valid")
         model = training(train_dataloader, valid_dataloader)
         testing(valid_dataloader, model)
