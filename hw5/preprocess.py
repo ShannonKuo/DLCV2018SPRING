@@ -24,7 +24,8 @@ from HW5_data.reader import getVideoList
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 1
+debug = 0
+read_valid_txt = 0
 batch_size = 4
 learning_rate = 1e-5
 n_class = 11
@@ -233,6 +234,28 @@ def testing(data_loader, model):
 
     print("test score: " + str(float(correct) / float(cnt)))
 
+def calculate_acc_from_txt(csvpath):
+    print("calculate acc from txt")
+    labels = []
+    predict = []
+    correct = 0
+    video_list = getVideoList(csvpath)
+    labels = video_list["Action_labels"]
+    if debug == 1:
+        labels = labels[:5]
+    file = open("./p1_valid.txt", "r")
+    for line in file:
+        if line == '\n':
+            continue
+        predict.append(int(line[:-1]))
+    print("len of true labels: " + str(len(labels)))
+    print("leb of predict lables: " + str(len(predict)))
+    for i in range(len(labels)):
+        if labels[i] == predict[i]:
+            correct += 1
+    file.close()
+    print("acc score: " + str(float(correct) / len(predict)))
+
 
 def get_feature(data_loader, model, video_frame_num):
     print("get feature...")
@@ -272,24 +295,30 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(999)
 
+        
     train_folder = "./HW5_data/TrimmedVideos/video/train/"
     valid_folder = "./HW5_data/TrimmedVideos/video/valid/"
     train_csvpath = "./HW5_data/TrimmedVideos/label/gt_train.csv"
     valid_csvpath = "./HW5_data/TrimmedVideos/label/gt_valid.csv"
-    train_dataloader, train_video_frame_num = extractFrames(train_folder, train_csvpath, 1, "train")
-    valid_dataloader, valid_video_frame_num = extractFrames(valid_folder, valid_csvpath, 0, "valid")
-    model = training(train_dataloader, valid_dataloader)
-    testing(valid_dataloader, model)
-    train_features = get_feature(train_dataloader, model, train_video_frame_num)
-    valid_features = get_feature(valid_dataloader, model, valid_video_frame_num)
-    
-    try:
-        os.remove("./train_features.txt")
-        os.remove("./valid_features.txt")
-    except OSError:
-        pass
 
-    with open("./train_features.txt", "wb") as fp:   #Pickling
-        pickle.dump(train_features, fp)
-    with open("./valid_features.txt", "wb") as fp:   #Pickling
-        pickle.dump(valid_features, fp)
+    if read_valid_txt == 1:
+        calculate_acc_from_txt(valid_csvpath)
+    else:
+        train_dataloader, train_video_frame_num = extractFrames(train_folder, train_csvpath, 0, "train")
+        valid_dataloader, valid_video_frame_num = extractFrames(valid_folder, valid_csvpath, 0, "valid")
+        model = training(train_dataloader, valid_dataloader)
+        testing(valid_dataloader, model)
+        calculate_acc_from_txt(valid_csvpath)
+        train_features = get_feature(train_dataloader, model, train_video_frame_num)
+        valid_features = get_feature(valid_dataloader, model, valid_video_frame_num)
+        
+        try:
+            os.remove("./train_features.txt")
+            os.remove("./valid_features.txt")
+        except OSError:
+            pass
+     
+        with open("./train_features.txt", "wb") as fp:   #Pickling
+            pickle.dump(train_features, fp)
+        with open("./valid_features.txt", "wb") as fp:   #Pickling
+            pickle.dump(valid_features, fp)
