@@ -24,8 +24,8 @@ from HW5_data.reader import getVideoList
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 0
-batch_size = 32
+debug = 1
+batch_size = 4
 learning_rate = 1e-5
 n_class = 11
 if debug == 1:
@@ -108,10 +108,19 @@ class training_model(nn.Module):
 
     def forward(self, x):
         x = self.pretrained(x)
-        x = self.fcn(x)
-        x = self.softmax(x)
-        x = torch.squeeze(x, 1)
-        return x
+        avg_feature = np.mean(np.array(x.data), axis = 0)
+        avg_feature = np.reshape(avg_feature, (1, 2048))
+        avg_feature = torch.from_numpy(avg_feature)
+        avg_feature = torch.squeeze(avg_feature, 1)
+        if torch.cuda.is_available():
+            avg_feature = Variable(avg_feature).cuda()
+        else:
+            avg_feature = Variable(avg_feature).cpu()
+
+        z = self.fcn(avg_feature)
+        z = self.softmax(z)
+        z = torch.squeeze(z, 1)
+        return z
 
 def training(data_loader, valid_dataloader):
     print("start training")
@@ -130,14 +139,13 @@ def training(data_loader, valid_dataloader):
         for data in data_loader:
             img = data[0].type(torch.FloatTensor)
             true_label = data[1].type(torch.FloatTensor)
+            true_label = true_label[0].view(1, n_class)
             if torch.cuda.is_available():
                 img = Variable(img).cuda()
                 true_label = Variable(true_label).cuda()
             else:
                 img = Variable(img).cpu()
                 true_label = Variable(true_label).cpu()
-            #print(type(img))
-            #img_show = to_img(img.cpu().data)
             # ===================forward=====================
             predict_label = model(img)
             loss = nn.BCELoss()(predict_label, true_label)
@@ -163,7 +171,6 @@ def compute_correct(preds, labels):
     for i in range(len(preds_)):
         if preds_[i] == labels_[i]:
             correct += 1
-    #acc = float(correct) / float(len(labels_)) * 100.0
     return correct
 
 def butter_lowpass(cutoff, fs, order=5):
@@ -192,8 +199,6 @@ def plot_loss(all_loss):
     plt.savefig('./loss.jpg')
     plt.close()
 
-
-
 def testing(data_loader, model):
     cnt = 0
     correct = 0
@@ -207,14 +212,13 @@ def testing(data_loader, model):
     for data in data_loader:
         img = data[0].type(torch.FloatTensor)
         true_label = data[1].type(torch.FloatTensor)
+        true_label = true_label[0].view(1, n_class)
         if torch.cuda.is_available():
             img = Variable(img).cuda()
             true_label = Variable(true_label).cuda()
         else:
             img = Variable(img).cpu()
             true_label = Variable(true_label).cpu()
-        #print(type(img))
-        #img_show = to_img(img.cpu().data)
         # ===================forward=====================
         predict_label = model(img)
         correct += compute_correct(predict_label, true_label)
@@ -238,6 +242,7 @@ def get_feature(data_loader, model, video_frame_num):
     for i, data in enumerate(data_loader):
         img = data[0].type(torch.FloatTensor)
         true_label = data[1].type(torch.FloatTensor)
+        true_label = true_label[0].view(1, n_class)
         if torch.cuda.is_available():
             img = Variable(img).cuda()
             true_label = Variable(true_label).cuda()
