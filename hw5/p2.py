@@ -26,7 +26,7 @@ from util import *
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 1
+debug = 0
 load_frame_data = 0
 read_valid_txt = 0
 batch_size = 4
@@ -37,7 +37,7 @@ debug_num = 10
 if debug == 1:
     num_epochs = 1
 else:
-    num_epochs = 30
+    num_epochs = 100
 
 class RNN_model(nn.Module):
     def __init__(self, hidden_size):
@@ -143,10 +143,10 @@ def get_feature(data_loader, model, csvpath):
     features = []
     for i, data in enumerate(data_loader):
         img = data[0].type(torch.FloatTensor)
-        if torch.cuda.is_available():
-            img = Variable(img).cuda()
-        else:
-            img = Variable(img).cpu()
+        #if torch.cuda.is_available():
+        #    img = Variable(img).cuda()
+        #else:
+        img = Variable(img).cpu()
         outputs = model.output_feature(img)
         features.append(outputs.data)
 
