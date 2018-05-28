@@ -89,8 +89,6 @@ def extractFrames(folder, csvpath, load, train):
                 labels = pickle.load(fp)
             with open("./video_frame_num.txt", "rb") as fp:   # Unpickling
                 video_frame_num = pickle.load(fp)
-    print(len(frames))
-    print(len(labels))
     if debug == 1:
         data = [(frames[i], labels[i]) for i in range(debug_num * batch_size)]
     else:
@@ -122,7 +120,6 @@ class training_model(nn.Module):
 
     def forward(self, x):
         x = self.pretrained(x)
-        print(x.shape)
         avg_feature = np.mean(np.array(x.data), axis = 0)
         avg_feature = np.reshape(avg_feature, (1, 2048))
         avg_feature = torch.from_numpy(avg_feature)
@@ -161,12 +158,9 @@ def training(data_loader, valid_dataloader):
             else:
                 img = Variable(img).cpu()
                 true_label = Variable(true_label).cpu()
-            print("train predict")
             # ===================forward=====================
             predict_label = model(img)
             loss = nn.BCELoss()(predict_label, true_label)
-            print(predict_label.data)
-            print(true_label.data)
             # ===================backward====================
             optimizer.zero_grad()
             loss.backward()
@@ -187,7 +181,6 @@ def compute_correct(preds, labels):
     preds_ = preds.data.max(1)[1]
     labels_ = labels.data.max(1)[1]
     for i in range(len(preds_)):
-        print(preds_[i], labels_[i])
         if preds_[i] == labels_[i]:
             correct += 1
     return correct
@@ -240,7 +233,6 @@ def testing(data_loader, model):
             true_label = Variable(true_label).cpu()
         # ===================forward=====================
         predict_label = model(img)
-        print("predict")
         correct += compute_correct(predict_label, true_label)
         cnt += predict_label.shape[0]
         preds_ = predict_label.data.max(1)[1]
@@ -268,7 +260,7 @@ def calculate_acc_from_txt(csvpath):
             continue
         predict.append(int(line[:-1]))
     print("len of true labels: " + str(len(labels)))
-    print("leb of predict lables: " + str(len(predict)))
+    print("leb of predict labels: " + str(len(predict)))
     for i in range(len(predict)):
         if int(labels[i]) == int(predict[i]):
             correct += 1
@@ -286,7 +278,7 @@ def get_feature(data_loader, model, video_frame_num):
         else:
             img = Variable(img).cpu()
         outputs = model.output_feature(img)
-        features.append(outputs)    
+        features.append(outputs.data)
     return features
 
 if __name__ == '__main__':
