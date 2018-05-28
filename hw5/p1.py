@@ -24,11 +24,12 @@ from HW5_data.reader import getVideoList
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 0
+debug = 1
 read_valid_txt = 0
 batch_size = 4
-learning_rate = 1e-4
+learning_rate = 1e-5
 n_class = 11
+debug_num = 10
 if debug == 1:
     num_epochs = 1
 else:
@@ -55,8 +56,6 @@ def extractFrames(folder, csvpath, load, train):
     cnt = 0
     if (load == 0):
         for i in range(len(video_list["Video_name"])):
-            if debug == 1 and i > 4:
-                break
             frame = readShortVideo(folder, video_list["Video_category"][i],
                                     video_list["Video_name"][i])
             for j in range(len(frame)):
@@ -66,6 +65,8 @@ def extractFrames(folder, csvpath, load, train):
                 labels.append(label)
                 cnt += 1
             video_frame_num.append(len(frame))
+            if debug == 1 and i >= debug_num - 1:
+                break
 
     if train == "train":
         if load == 0:
@@ -91,7 +92,7 @@ def extractFrames(folder, csvpath, load, train):
     print(len(frames))
     print(len(labels))
     if debug == 1:
-        data = [(frames[i], labels[i]) for i in range(5)]
+        data = [(frames[i], labels[i]) for i in range(debug_num * batch_size)]
     else:
         data = [(frames[i], labels[i]) for i in range(len(frames))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
@@ -121,6 +122,7 @@ class training_model(nn.Module):
 
     def forward(self, x):
         x = self.pretrained(x)
+        print(x.shape)
         avg_feature = np.mean(np.array(x.data), axis = 0)
         avg_feature = np.reshape(avg_feature, (1, 2048))
         avg_feature = torch.from_numpy(avg_feature)
@@ -159,9 +161,12 @@ def training(data_loader, valid_dataloader):
             else:
                 img = Variable(img).cpu()
                 true_label = Variable(true_label).cpu()
+            print("train predict")
             # ===================forward=====================
             predict_label = model(img)
             loss = nn.BCELoss()(predict_label, true_label)
+            print(predict_label.data)
+            print(true_label.data)
             # ===================backward====================
             optimizer.zero_grad()
             loss.backward()
@@ -182,6 +187,7 @@ def compute_correct(preds, labels):
     preds_ = preds.data.max(1)[1]
     labels_ = labels.data.max(1)[1]
     for i in range(len(preds_)):
+        print(preds_[i], labels_[i])
         if preds_[i] == labels_[i]:
             correct += 1
     return correct
@@ -234,6 +240,7 @@ def testing(data_loader, model):
             true_label = Variable(true_label).cpu()
         # ===================forward=====================
         predict_label = model(img)
+        print("predict")
         correct += compute_correct(predict_label, true_label)
         cnt += predict_label.shape[0]
         preds_ = predict_label.data.max(1)[1]
@@ -254,7 +261,7 @@ def calculate_acc_from_txt(csvpath):
     video_list = getVideoList(csvpath)
     labels = video_list["Action_labels"]
     if debug == 1:
-        labels = labels[:5]
+        labels = labels[:debug_num * batch_size]
     file = open("./p1_valid.txt", "r")
     for line in file:
         if line == '\n':
@@ -298,7 +305,7 @@ if __name__ == '__main__':
     if read_valid_txt == 1:
         calculate_acc_from_txt(valid_csvpath)
     else:
-        train_dataloader, train_video_frame_num = extractFrames(train_folder, train_csvpath, 1, "train")
+        train_dataloader, train_video_frame_num = extractFrames(train_folder, train_csvpath, 0, "train")
         valid_dataloader, valid_video_frame_num = extractFrames(valid_folder, valid_csvpath, 0, "valid")
         model = training(train_dataloader, valid_dataloader)
         testing(valid_dataloader, model)
