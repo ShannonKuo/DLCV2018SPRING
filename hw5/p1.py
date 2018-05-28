@@ -35,21 +35,10 @@ if debug == 1:
 else:
     num_epochs = 30
 
-img_transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-])
-
-def to_img(x):
-    x = 0.5 * (x + 1)
-    x = x.clamp(0, 1)
-    x = x.view(x.size(0), 3, 64, 64)
-    return x
 
 def extractFrames(folder, csvpath, load, train):
     print("extract frames...")
     file_list = []
-    video_frame_num = []
     frames = []
     labels = []
     video_list = getVideoList(csvpath)
@@ -64,7 +53,6 @@ def extractFrames(folder, csvpath, load, train):
                 label[int(video_list["Action_labels"][i])] = 1
                 labels.append(label)
                 cnt += 1
-            video_frame_num.append(len(frame))
             if debug == 1 and i >= debug_num - 1:
                 break
 
@@ -73,28 +61,23 @@ def extractFrames(folder, csvpath, load, train):
             try:
                 os.remove("./frames.txt")
                 os.remove("./labels.txt")
-                os.remove("./video_frame_num.txt")
             except OSError:
                 pass
             with open("./frames.txt", "wb") as fp:   #Pickling
                 pickle.dump(frames, fp)
             with open("./labels.txt", "wb") as fp:   #Pickling
                 pickle.dump(labels, fp)
-            with open("./video_frame_num.txt", "wb") as fp:   #Pickling
-                pickle.dump(video_frame_num, fp)
         elif load == 1:
             with open("./frames.txt", "rb") as fp:   # Unpickling
                 frames = pickle.load(fp)
             with open("./labels.txt", "rb") as fp:   # Unpickling
                 labels = pickle.load(fp)
-            with open("./video_frame_num.txt", "rb") as fp:   # Unpickling
-                video_frame_num = pickle.load(fp)
     if debug == 1:
         data = [(frames[i], labels[i]) for i in range(debug_num * batch_size)]
     else:
         data = [(frames[i], labels[i]) for i in range(len(frames))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
-    return dataloader, video_frame_num
+    return dataloader
 
 class training_model(nn.Module):
     def __init__(self):
@@ -268,7 +251,7 @@ def calculate_acc_from_txt(csvpath):
     print("acc score: " + str(float(correct) / len(predict)))
 
 
-def get_feature(data_loader, model, video_frame_num):
+def get_feature(data_loader, model):
     print("get feature...")
     features = []
     for i, data in enumerate(data_loader):
@@ -297,13 +280,13 @@ if __name__ == '__main__':
     if read_valid_txt == 1:
         calculate_acc_from_txt(valid_csvpath)
     else:
-        train_dataloader, train_video_frame_num = extractFrames(train_folder, train_csvpath, 0, "train")
-        valid_dataloader, valid_video_frame_num = extractFrames(valid_folder, valid_csvpath, 0, "valid")
+        train_dataloader = extractFrames(train_folder, train_csvpath, 0, "train")
+        valid_dataloader = extractFrames(valid_folder, valid_csvpath, 0, "valid")
         model = training(train_dataloader, valid_dataloader)
         testing(valid_dataloader, model)
         calculate_acc_from_txt(valid_csvpath)
-        train_features = get_feature(train_dataloader, model, train_video_frame_num)
-        valid_features = get_feature(valid_dataloader, model, valid_video_frame_num)
+        """train_features = get_feature(train_dataloader, model)
+        valid_features = get_feature(valid_dataloader, model)
         
         try:
             os.remove("./train_features.txt")
@@ -315,3 +298,4 @@ if __name__ == '__main__':
             pickle.dump(train_features, fp)
         with open("./valid_features.txt", "wb") as fp:   #Pickling
             pickle.dump(valid_features, fp)
+        """
