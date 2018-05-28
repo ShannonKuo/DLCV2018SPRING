@@ -70,11 +70,55 @@ def extractFrames(folder, csvpath, load, train, debug = 0):
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     return dataloader
 
+def extractFrames2(folder, csvpath, load, train, debug = 0):
+    print("extract frames...")
+    file_list = []
+    frames = []
+    labels = []
+    video_list = getVideoList(csvpath)
+    cnt = 0
+    if (load == 0):
+        for i in range(len(video_list["Video_name"])):
+            frame = readShortVideo(folder, video_list["Video_category"][i],
+                                    video_list["Video_name"][i])
+            for j in range(len(frame)):
+                frames.append(np.moveaxis(frame[j], -1, 0))
+                label = np.zeros(n_class)
+                label[int(video_list["Action_labels"][i])] = 1
+                labels.append(label)
+                cnt += 1
+            if debug == 1 and i >= debug_num - 1:
+                break
+
+    if train == "train":
+        if load == 0:
+            try:
+                os.remove("./frames.txt")
+                os.remove("./labels.txt")
+            except OSError:
+                pass
+            with open("./frames.txt", "wb") as fp:   #Pickling
+                pickle.dump(frames, fp)
+            with open("./labels.txt", "wb") as fp:   #Pickling
+                pickle.dump(labels, fp)
+        elif load == 1:
+            with open("./frames.txt", "rb") as fp:   # Unpickling
+                frames = pickle.load(fp)
+            with open("./labels.txt", "rb") as fp:   # Unpickling
+                labels = pickle.load(fp)
+    if debug == 1:
+        data = [(frames[i], labels[i]) for i in range(debug_num * batch_size)]
+        print(len(data))
+    else:
+        data = [(frames[i], labels[i]) for i in range(len(frames))]
+    dataloader = DataLoader(data, batch_size=1, shuffle=False)
+    return dataloader
+
 
 def compute_correct(preds, labels):
     correct = 0
-    preds_ = preds.data.max(1)[1]
-    labels_ = labels.data.max(1)[1]
+    preds_ = np.argmax(preds, 1)
+    labels_ = np.argmax(labels, 1)
     for i in range(len(preds_)):
         if preds_[i] == labels_[i]:
             correct += 1
@@ -119,7 +163,7 @@ def calculate_acc_from_txt(csvpath, output_filename):
             continue
         predict.append(int(line[:-1]))
     print("len of true labels: " + str(len(labels)))
-    print("leb of predict labels: " + str(len(predict)))
+    print("len of predict labels: " + str(len(predict)))
     for i in range(len(predict)):
         if int(labels[i]) == int(predict[i]):
             correct += 1

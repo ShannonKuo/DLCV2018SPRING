@@ -105,13 +105,13 @@ def training(data_loader, valid_dataloader, loss_filename):
             # ===================backward====================
             optimizer.zero_grad()
             loss.backward()
-            train_loss += loss.data[0]
+            train_loss += loss.item()
             optimizer.step()
         # ===================log========================
         print('epoch [{}/{}], loss:{:.4f}'.
                 format(epoch+1, num_epochs, train_loss))
         torch.save(model.state_dict(), './p1.pth')
-        all_loss.append(loss.data[0])
+        all_loss.append(loss.item())
         testing(valid_dataloader, model)
 
     plot_loss(all_loss, loss_filename)
@@ -139,9 +139,11 @@ def testing(data_loader, model):
             true_label = Variable(true_label).cpu()
         # ===================forward=====================
         predict_label = model(img)
+        predict_label = np.array(predict_label.data)
+        true_label = np.array(true_label.data)
         correct += compute_correct(predict_label, true_label)
         cnt += predict_label.shape[0]
-        preds_ = predict_label.data.max(1)[1]
+        preds_ = np.argmax(predict_label, 1)
         for i in range(len(preds_)):
             file.write(str(preds_[i]))
             file.write('\n')
