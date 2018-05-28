@@ -21,6 +21,7 @@ import collections
 import pickle
 from HW5_data.reader import readShortVideo
 from HW5_data.reader import getVideoList
+from util import *
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
@@ -35,49 +36,6 @@ if debug == 1:
 else:
     num_epochs = 30
 
-
-def extractFrames(folder, csvpath, load, train):
-    print("extract frames...")
-    file_list = []
-    frames = []
-    labels = []
-    video_list = getVideoList(csvpath)
-    cnt = 0
-    if (load == 0):
-        for i in range(len(video_list["Video_name"])):
-            frame = readShortVideo(folder, video_list["Video_category"][i],
-                                    video_list["Video_name"][i])
-            for j in range(len(frame)):
-                frames.append(np.moveaxis(frame[j], -1, 0))
-                label = np.zeros(n_class)
-                label[int(video_list["Action_labels"][i])] = 1
-                labels.append(label)
-                cnt += 1
-            if debug == 1 and i >= debug_num - 1:
-                break
-
-    if train == "train":
-        if load == 0:
-            try:
-                os.remove("./frames.txt")
-                os.remove("./labels.txt")
-            except OSError:
-                pass
-            with open("./frames.txt", "wb") as fp:   #Pickling
-                pickle.dump(frames, fp)
-            with open("./labels.txt", "wb") as fp:   #Pickling
-                pickle.dump(labels, fp)
-        elif load == 1:
-            with open("./frames.txt", "rb") as fp:   # Unpickling
-                frames = pickle.load(fp)
-            with open("./labels.txt", "rb") as fp:   # Unpickling
-                labels = pickle.load(fp)
-    if debug == 1:
-        data = [(frames[i], labels[i]) for i in range(debug_num * batch_size)]
-    else:
-        data = [(frames[i], labels[i]) for i in range(len(frames))]
-    dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
-    return dataloader
 
 class training_model(nn.Module):
     def __init__(self):
@@ -117,7 +75,7 @@ class training_model(nn.Module):
         z = torch.squeeze(z, 1)
         return z
 
-def training(data_loader, valid_dataloader):
+def training(data_loader, valid_dataloader, loss_filename):
     print("start training")
     if torch.cuda.is_available():
         model = training_model().cuda()
@@ -156,43 +114,8 @@ def training(data_loader, valid_dataloader):
         all_loss.append(loss.data[0])
         testing(valid_dataloader, model)
 
-    plot_loss(all_loss)
+    plot_loss(all_loss, loss_filename)
     return model
-
-def compute_correct(preds, labels):
-    correct = 0
-    preds_ = preds.data.max(1)[1]
-    labels_ = labels.data.max(1)[1]
-    for i in range(len(preds_)):
-        if preds_[i] == labels_[i]:
-            correct += 1
-    return correct
-
-def butter_lowpass(cutoff, fs, order=5):
-    nyq = 0.5 * fs
-    normal_cutoff = cutoff / nyq
-    b, a = butter(order, normal_cutoff, btype='low', analog=False)
-    return b, a
-
-def butter_lowpass_filter(data, cutoff, fs, order=5):
-    b, a = butter_lowpass(cutoff, fs, order=order)
-    y = lfilter(b, a, data)
-    return y
-
-
-def plot_loss(all_loss):
-
-    #all_loss = butter_lowpass_filter(all_loss, 3.667, 100.0, 6)
-    
-    fig=plt.figure(figsize=(10, 10))
-    t = np.arange(0.0, len(all_loss), 1.0)
-    line, = plt.plot(t, all_loss, lw=2)
-    plt.xlabel('epochs')
-    plt.ylabel('loss')
-    plt.title('loss vs epochs')
-
-    plt.savefig('./loss.jpg')
-    plt.close()
 
 def testing(data_loader, model):
     cnt = 0
@@ -228,41 +151,6 @@ def testing(data_loader, model):
 
     print("test score: " + str(float(correct) / float(cnt)))
 
-def calculate_acc_from_txt(csvpath):
-    print("calculate acc from txt")
-    labels = []
-    predict = []
-    correct = 0
-    video_list = getVideoList(csvpath)
-    labels = video_list["Action_labels"]
-    if debug == 1:
-        labels = labels[:debug_num * batch_size]
-    file = open("./p1_valid.txt", "r")
-    for line in file:
-        if line == '\n':
-            continue
-        predict.append(int(line[:-1]))
-    print("len of true labels: " + str(len(labels)))
-    print("leb of predict labels: " + str(len(predict)))
-    for i in range(len(predict)):
-        if int(labels[i]) == int(predict[i]):
-            correct += 1
-    file.close()
-    print("acc score: " + str(float(correct) / len(predict)))
-
-
-def get_feature(data_loader, model):
-    print("get feature...")
-    features = []
-    for i, data in enumerate(data_loader):
-        img = data[0].type(torch.FloatTensor)
-        if torch.cuda.is_available():
-            img = Variable(img).cuda()
-        else:
-            img = Variable(img).cpu()
-        outputs = model.output_feature(img)
-        features.append(outputs.data)
-    return features
 
 if __name__ == '__main__':
 
@@ -280,11 +168,11 @@ if __name__ == '__main__':
     if read_valid_txt == 1:
         calculate_acc_from_txt(valid_csvpath)
     else:
-        train_dataloader = extractFrames(train_folder, train_csvpath, 0, "train")
-        valid_dataloader = extractFrames(valid_folder, valid_csvpath, 0, "valid")
-        model = training(train_dataloader, valid_dataloader)
+        train_dataloader = extractFrames(train_folder, train_csvpath, 0, "train", debug)
+        valid_dataloader = extractFrames(valid_folder, valid_csvpath, 0, "valid", debug)
+        model = training(train_dataloader, valid_dataloader, "./loss.jpg")
         testing(valid_dataloader, model)
-        calculate_acc_from_txt(valid_csvpath)
+        calculate_acc_from_txt(valid_csvpath, "./p1_valid.txt")
         """train_features = get_feature(train_dataloader, model)
         valid_features = get_feature(valid_dataloader, model)
         
