@@ -27,10 +27,11 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
 debug = 0
+read_feature = 0
 load_frame_data = 1
 read_valid_txt = 0
 batch_size = 4
-learning_rate = 1e-4
+learning_rate = 1e-3
 n_class = 11
 hidden_size = 2048
 debug_num = 10
@@ -138,7 +139,7 @@ def testing(data_loader, model, save_filename):
 
     print("test score: " + str(float(correct) / float(cnt)))
 
-def get_feature(data_loader, model, csvpath):
+def get_feature(data_loader, model, csvpath, output_filename):
     print("get feature...")
     features = []
     for i, data in enumerate(data_loader):
@@ -161,7 +162,34 @@ def get_feature(data_loader, model, csvpath):
             one_hot_labels.append(label)
 
     data = [(features[i], one_hot_labels[i]) for i in range(len(features))]
+    print(features[0].shape)
+    try:
+        os.remove(output_filename)
+    except OSError:
+        pass
+ 
+    with open(output_filename, "wb") as fp:   #Pickling
+        pickle.dump(features, fp)
 
+    dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
+    return dataloader
+
+def read_feature_from_file(csvpath, filename):
+    features = []
+    with open(filename, "rb") as fp:   # Unpickling
+        features = pickle.load(fp)
+    video_list = getVideoList(csvpath)
+    labels = video_list["Action_labels"]
+
+    one_hot_labels = []
+    for i in range(len(labels)):
+        for j in range(batch_size):
+            label = np.zeros(n_class)
+            label[int(video_list["Action_labels"][i])] = 1
+            one_hot_labels.append(label)
+    print("len of feature: " + str(len(features)))
+    print("feature size: " + str(features[0].shape))
+    data = [(features[i], one_hot_labels[i]) for i in range(len(features))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     return dataloader
 
@@ -178,14 +206,21 @@ if __name__ == '__main__':
     train_csvpath = "./HW5_data/TrimmedVideos/label/gt_train.csv"
     valid_csvpath = "./HW5_data/TrimmedVideos/label/gt_valid.csv"
     output_filename = "./p2_result.txt"
-
-    train_dataloader = extractFrames2(train_folder, train_csvpath, load_frame_data, "train", debug)
-    valid_dataloader = extractFrames2(valid_folder, valid_csvpath, 0, "valid", debug)
-    print("load p1 model...")
-    model_p1 = training_model()
-    model_p1.load_state_dict(torch.load('./p1.pth'))
-    train_features = get_feature(train_dataloader, model_p1, train_csvpath)
-    valid_features = get_feature(valid_dataloader, model_p1, valid_csvpath)
+    train_feature_txt = "./train_feature.txt"
+    valid_feature_txt = "./valid_feature.txt"
+    if read_feature == 1:
+        print("read feature...")
+        train_features = read_feature_from_file(train_csvpath, train_feature_txt)
+        valid_features = read_feature_from_file(valid_csvpath, valid_feature_txt)
+    else:
+        print("produce feature...")
+        train_dataloader = extractFrames2(train_folder, train_csvpath, load_frame_data, "train", debug)
+        valid_dataloader = extractFrames2(valid_folder, valid_csvpath, 0, "valid", debug)
+        print("load p1 model...")
+        model_p1 = training_model()
+        model_p1.load_state_dict(torch.load('./p1.pth'))
+        train_features = get_feature(train_dataloader, model_p1, train_csvpath,  train_feature_txt)
+        valid_features = get_feature(valid_dataloader, model_p1, valid_csvpath,  valid_feature_txt)
 
     print("construct RNN model...")
     if torch.cuda.is_available():
