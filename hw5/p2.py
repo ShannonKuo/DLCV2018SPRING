@@ -26,8 +26,8 @@ from util import *
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 0
-read_feature = 0
+debug = 1
+read_feature = 1
 load_frame_data = 1
 read_valid_txt = 0
 batch_size = 4
@@ -57,10 +57,7 @@ class RNN_model(nn.Module):
     def forward(self, inputs, hidden=None, steps=0):
         if steps == 0: steps = len(inputs)
         for i in range(steps):
-            if i == 0:
-                input = inputs[i]
-            else:
-                input = output
+            input = inputs[i]
             output, hidden = self.step(input, hidden)
         output = self.out(output).view(1, -1)
         output = self.softmax(output)
@@ -123,6 +120,7 @@ def testing(data_loader, model, save_filename):
         else:
             cnn_feature = Variable(cnn_feature).cpu()
             true_label = Variable(true_label).cpu()
+        print (np.argmax(np.array(true_label.data)),1)
         # ===================forward=====================
         predict_label, hidden = model(cnn_feature, None)
         predict_label = np.array(predict_label.data)
@@ -193,6 +191,8 @@ def read_feature_from_file(csvpath, filename):
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     return dataloader
 
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 if __name__ == '__main__':
 
@@ -228,6 +228,7 @@ if __name__ == '__main__':
     else:
         model_RNN = RNN_model(hidden_size).cpu()
 
+    print(count_parameters(model_RNN))
     model_RNN = training(train_features, valid_features, model_RNN, "./p2_loss.jpg", output_filename)
     testing(valid_features, model_RNN, output_filename)
     calculate_acc_from_txt(valid_csvpath, output_filename)
