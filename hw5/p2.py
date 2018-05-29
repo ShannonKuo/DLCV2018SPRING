@@ -27,10 +27,10 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
 debug = 0
-load_frame_data = 0
+load_frame_data = 1
 read_valid_txt = 0
 batch_size = 4
-learning_rate = 1e-5
+learning_rate = 1e-4
 n_class = 11
 hidden_size = 2048
 debug_num = 10
@@ -155,9 +155,10 @@ def get_feature(data_loader, model, csvpath):
 
     one_hot_labels = []
     for i in range(len(labels)):
-        label = np.zeros(n_class)
-        label[int(video_list["Action_labels"][i])] = 1
-        one_hot_labels.append(label)
+        for j in range(batch_size):
+            label = np.zeros(n_class)
+            label[int(video_list["Action_labels"][i])] = 1
+            one_hot_labels.append(label)
 
     data = [(features[i], one_hot_labels[i]) for i in range(len(features))]
 

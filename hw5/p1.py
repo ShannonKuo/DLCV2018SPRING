@@ -25,10 +25,10 @@ from util import *
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 1
+debug = 0
 read_valid_txt = 0
 batch_size = 4
-learning_rate = 1e-5
+learning_rate = 1e-4
 n_class = 11
 debug_num = 10
 if debug == 1:
