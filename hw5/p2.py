@@ -31,7 +31,7 @@ read_feature = 1
 load_frame_data = 1
 read_valid_txt = 0
 batch_size = 4
-learning_rate = 1e-3
+learning_rate = 1e-4
 n_class = 11
 hidden_size = 2048
 debug_num = 10
@@ -45,27 +45,28 @@ class RNN_model(nn.Module):
         super(RNN_model, self).__init__()
         self.hidden_size = hidden_size
 
-        self.rnn = nn.LSTM(hidden_size, hidden_size, 1, dropout=0.05)
-        self.out = nn.Linear(hidden_size, 11)
+        self.rnn = nn.LSTM(hidden_size, hidden_size, 1, dropout=0.05, bidirectional=True)
+        self.out = nn.Linear(hidden_size*2, 11)
         self.softmax = nn.Softmax()
 
     def step(self, input, hidden=None):
-        input = input.view(1, -1).unsqueeze(1)
+        input = input.view(len(input), -1).unsqueeze(1)
         output, hidden = self.rnn(input, hidden)
         return output, hidden
 
     def forward(self, inputs, hidden=None, steps=0):
         if steps == 0: steps = len(inputs)
-        for i in range(steps):
-            input = inputs[i]
-            output, hidden = self.step(input, hidden)
-        output = self.out(output).view(1, -1)
+        output, hidden = self.step(inputs, hidden)
+        output = self.out(output).view(len(inputs), -1)
+        output = output[-1]
         output = self.softmax(output)
+        output = output.view(1, -1)
         return output, hidden
 
 def training(data_loader, valid_dataloader, model, loss_filename, output_filename):
     print("start training")
     model.train()
+
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
                                 weight_decay=1e-5)
 
@@ -120,7 +121,6 @@ def testing(data_loader, model, save_filename):
         else:
             cnn_feature = Variable(cnn_feature).cpu()
             true_label = Variable(true_label).cpu()
-        print (np.argmax(np.array(true_label.data)),1)
         # ===================forward=====================
         predict_label, hidden = model(cnn_feature, None)
         predict_label = np.array(predict_label.data)
@@ -160,7 +160,6 @@ def get_feature(data_loader, model, csvpath, output_filename):
             one_hot_labels.append(label)
 
     data = [(features[i], one_hot_labels[i]) for i in range(len(features))]
-    print(features[0].shape)
     try:
         os.remove(output_filename)
     except OSError:
