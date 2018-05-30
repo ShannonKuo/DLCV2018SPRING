@@ -13,7 +13,6 @@ import scipy.misc
 import os
 import sys
 import numpy as np
-import cv2
 import csv
 import skvideo.io
 import skimage.transform
