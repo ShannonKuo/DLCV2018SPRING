@@ -30,10 +30,10 @@ debug = 1
 read_feature = 1
 load_frame_data = 1
 read_valid_txt = 0
-batch_size = 4
+batch_size = 8
 learning_rate = 1e-4
 n_class = 11
-hidden_size = 2048
+hidden_size = 512
 debug_num = 10
 if debug == 1:
     num_epochs = 1
@@ -45,7 +45,7 @@ class RNN_model(nn.Module):
         super(RNN_model, self).__init__()
         self.hidden_size = hidden_size
 
-        self.rnn = nn.LSTM(hidden_size, hidden_size, 1, dropout=0.05, bidirectional=True)
+        self.rnn = nn.LSTM(2048, hidden_size, 1, dropout=0.05, bidirectional=True)
         self.out = nn.Linear(hidden_size*2, 11)
         self.softmax = nn.Softmax()
 
@@ -213,8 +213,8 @@ if __name__ == '__main__':
         valid_features = read_feature_from_file(valid_csvpath, valid_feature_txt)
     else:
         print("produce feature...")
-        train_dataloader = extractFrames2(train_folder, train_csvpath, load_frame_data, "train", debug)
-        valid_dataloader = extractFrames2(valid_folder, valid_csvpath, 0, "valid", debug)
+        train_dataloader = extractFrames2(train_folder, train_csvpath, load_frame_data, "train", debug, batch_size)
+        valid_dataloader = extractFrames2(valid_folder, valid_csvpath, 0, "valid", debug, batch_size)
         print("load p1 model...")
         model_p1 = training_model()
         model_p1.load_state_dict(torch.load('./p1.pth'))
