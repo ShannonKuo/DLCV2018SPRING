@@ -27,8 +27,8 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
 debug = 1
-read_feature = 1
-load_frame_data = 1
+read_feature = 0
+load_frame_data = 0
 read_valid_txt = 0
 batch_size = 8
 learning_rate = 1e-4
@@ -205,8 +205,8 @@ if __name__ == '__main__':
     train_csvpath = "./HW5_data/TrimmedVideos/label/gt_train.csv"
     valid_csvpath = "./HW5_data/TrimmedVideos/label/gt_valid.csv"
     output_filename = "./p2_result.txt"
-    train_feature_txt = "./train_feature.txt"
-    valid_feature_txt = "./valid_feature.txt"
+    train_feature_txt = "./train_feature_8.txt"
+    valid_feature_txt = "./valid_feature_8.txt"
     if read_feature == 1:
         print("read feature...")
         train_features = read_feature_from_file(train_csvpath, train_feature_txt)
