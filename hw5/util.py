@@ -80,7 +80,7 @@ def extractFrames2(folder, csvpath, load, train, debug = 0, frame_num=8):
     if (load == 0):
         for i in range(len(video_list["Video_name"])):
             frame = readShortVideo(folder, video_list["Video_category"][i],
-                                    video_list["Video_name"][i], frame_num)
+                                    video_list["Video_name"][i], frame_num=frame_num)
             for j in range(len(frame)):
                 frames.append(np.moveaxis(frame[j], -1, 0))
                 label = np.zeros(n_class)
@@ -108,7 +108,6 @@ def extractFrames2(folder, csvpath, load, train, debug = 0, frame_num=8):
                 labels = pickle.load(fp)
     if debug == 1:
         data = [(frames[i], labels[i]) for i in range(debug_num * frame_num)]
-        print(len(data))
     else:
         data = [(frames[i], labels[i]) for i in range(len(frames))]
     dataloader = DataLoader(data, batch_size=1, shuffle=False)

@@ -27,8 +27,8 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
 debug = 1
-read_feature = 1
-load_frame_data = 1
+read_feature = 0
+load_frame_data = 0
 read_valid_txt = 0
 batch_size = 8
 learning_rate = 1e-4
