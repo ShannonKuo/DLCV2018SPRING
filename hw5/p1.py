@@ -26,7 +26,7 @@ from scipy.signal import butter, lfilter, freqz
 
 debug = 0
 load_frame_data_train = 1
-load_frame_data_valid = 0
+load_frame_data_valid = 1
 read_valid_txt = 0
 batch_size = 8
 learning_rate = 1e-4
@@ -148,7 +148,6 @@ def testing(data_loader, model):
         for i in range(len(preds_)):
             file.write(str(preds_[i]))
             file.write('\n')
-
     file.write('\n')
     file.close()
 

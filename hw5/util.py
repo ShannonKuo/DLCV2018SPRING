@@ -91,7 +91,7 @@ def extractFrames(folder, csvpath, load, train, debug = 0, frame_num=8):
         data = [(frames[i], labels[i]) for i in range(debug_num * frame_num)]
     else:
         data = [(frames[i], labels[i]) for i in range(len(frames))]
-    dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
+    dataloader = DataLoader(data, batch_size=frame_num, shuffle=False)
     return dataloader
 
 def extractFrames2(folder, csvpath, load, train, debug = 0, frame_num=8):
