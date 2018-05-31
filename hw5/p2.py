@@ -25,26 +25,34 @@ from util import *
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 1
+debug = 0
 read_feature = 0
-load_frame_data = 0
+load_frame_data = 1
 read_valid_txt = 0
 batch_size = 8
 learning_rate = 1e-4
 n_class = 11
-hidden_size = 512
+hidden_size = 256
 debug_num = 10
+
 if debug == 1:
     num_epochs = 1
 else:
-    num_epochs = 100
+    num_epochs = 40
+
+def weights_init(m):
+    for name, param in m.named_parameters():
+        if 'bias' in name:
+            nn.init.constant(param, 0.0)
+        elif 'weight' in name:
+            nn.init.orthogonal(param, gain=1)
 
 class RNN_model(nn.Module):
     def __init__(self, hidden_size):
         super(RNN_model, self).__init__()
         self.hidden_size = hidden_size
 
-        self.rnn = nn.LSTM(2048, hidden_size, 1, dropout=0.05, bidirectional=True)
+        self.rnn = nn.LSTM(2048, hidden_size, 2, dropout=0.1, bidirectional=True)
         self.out = nn.Linear(hidden_size*2, 11)
         self.softmax = nn.Softmax()
 
@@ -64,11 +72,11 @@ class RNN_model(nn.Module):
 
 def training(data_loader, valid_dataloader, model, loss_filename, output_filename):
     print("start training")
+    model.apply(weights_init)
     model.train()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
                                 weight_decay=1e-5)
-
     all_loss = []
     for epoch in range(num_epochs):
         idx = 0
@@ -213,7 +221,7 @@ if __name__ == '__main__':
     else:
         print("produce feature...")
         train_dataloader = extractFrames2(train_folder, train_csvpath, load_frame_data, "train", debug, batch_size)
-        valid_dataloader = extractFrames2(valid_folder, valid_csvpath, 0, "valid", debug, batch_size)
+        valid_dataloader = extractFrames2(valid_folder, valid_csvpath, load_frame_data, "valid", debug, batch_size)
         print("load p1 model...")
         model_p1 = training_model()
         model_p1.load_state_dict(torch.load('./p1.pth'))

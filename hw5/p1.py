@@ -13,7 +13,6 @@ import scipy.misc
 import os
 import sys
 import numpy as np
-import cv2
 import csv
 import skvideo.io
 import skimage.transform
@@ -26,15 +25,17 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
 debug = 0
+load_frame_data_train = 1
+load_frame_data_valid = 0
 read_valid_txt = 0
-batch_size = 4
+batch_size = 8
 learning_rate = 1e-4
 n_class = 11
 debug_num = 10
 if debug == 1:
     num_epochs = 1
 else:
-    num_epochs = 30
+    num_epochs = 50
 
 
 class training_model(nn.Module):
@@ -170,22 +171,8 @@ if __name__ == '__main__':
     if read_valid_txt == 1:
         calculate_acc_from_txt(valid_csvpath)
     else:
-        train_dataloader = extractFrames(train_folder, train_csvpath, 0, "train", debug)
-        valid_dataloader = extractFrames(valid_folder, valid_csvpath, 0, "valid", debug)
+        train_dataloader = extractFrames(train_folder, train_csvpath, load_frame_data_train, "train", debug)
+        valid_dataloader = extractFrames(valid_folder, valid_csvpath, load_frame_data_valid, "valid", debug)
         model = training(train_dataloader, valid_dataloader, "./loss.jpg")
         testing(valid_dataloader, model)
         calculate_acc_from_txt(valid_csvpath, "./p1_valid.txt")
-        """train_features = get_feature(train_dataloader, model)
-        valid_features = get_feature(valid_dataloader, model)
-        
-        try:
-            os.remove("./train_features.txt")
-            os.remove("./valid_features.txt")
-        except OSError:
-            pass
-     
-        with open("./train_features.txt", "wb") as fp:   #Pickling
-            pickle.dump(train_features, fp)
-        with open("./valid_features.txt", "wb") as fp:   #Pickling
-            pickle.dump(valid_features, fp)
-        """
