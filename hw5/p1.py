@@ -24,11 +24,12 @@ from util import *
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 0
+debug = 1
 load_frame_data_train = 1
 load_frame_data_valid = 1
 read_valid_txt = 0
-batch_size = 8
+test = 0
+batch_size = 16
 learning_rate = 1e-4
 n_class = 11
 debug_num = 10
@@ -86,6 +87,7 @@ def training(data_loader, valid_dataloader, loss_filename):
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
                                 weight_decay=1e-5)
 
+    max_acc = -1
     all_loss = []
     for epoch in range(num_epochs):
         idx = 0
@@ -111,22 +113,22 @@ def training(data_loader, valid_dataloader, loss_filename):
         # ===================log========================
         print('epoch [{}/{}], loss:{:.4f}'.
                 format(epoch+1, num_epochs, train_loss))
-        torch.save(model.state_dict(), './p1.pth')
         all_loss.append(loss.item())
-        testing(valid_dataloader, model)
+        acc = testing(valid_dataloader, model, max_acc)
+        if (acc >= max_acc):
+            max_acc = acc
+            torch.save(model.state_dict(), './p1.pth')
+            print("save model")
+        
 
     plot_loss(all_loss, loss_filename)
     return model
 
-def testing(data_loader, model):
+def testing(data_loader, model, max_acc):
     cnt = 0
     correct = 0
     save_filename = './p1_valid.txt'
-    try:
-        os.remove(save_filename)
-    except OSError:
-        pass
-    file = open(save_filename, "a+")
+    all_predict = []
 
     for data in data_loader:
         img = data[0].type(torch.FloatTensor)
@@ -146,13 +148,22 @@ def testing(data_loader, model):
         cnt += predict_label.shape[0]
         preds_ = np.argmax(predict_label, 1)
         for i in range(len(preds_)):
-            file.write(str(preds_[i]))
+            all_predict.append(preds_[i])
+
+    if float(correct) / float(cnt) >= max_acc:
+        try:
+            os.remove(save_filename)
+        except OSError:
+            pass
+        file = open(save_filename, "a+")
+        for i in range(len(all_predict)):
+            file.write(str(all_predict[i]))
             file.write('\n')
-    file.write('\n')
-    file.close()
+        file.write('\n')
+        file.close()
 
     print("test score: " + str(float(correct) / float(cnt)))
-
+    return float(correct) / float(cnt)
 
 if __name__ == '__main__':
 
@@ -166,12 +177,22 @@ if __name__ == '__main__':
     valid_folder = "./HW5_data/TrimmedVideos/video/valid/"
     train_csvpath = "./HW5_data/TrimmedVideos/label/gt_train.csv"
     valid_csvpath = "./HW5_data/TrimmedVideos/label/gt_valid.csv"
-
+    p1_result = "./p1_valid.txt"
+    
     if read_valid_txt == 1:
-        calculate_acc_from_txt(valid_csvpath)
+        calculate_acc_from_txt(valid_csvpath, p1_result)
+    elif test == 1:
+        valid_dataloader = extractFrames(valid_folder, valid_csvpath, 1, "valid", 0)
+        model = training_model()
+        model.load_state_dict(torch.load("./p1.pth"))
+        if torch.cuda.is_available():
+            model = model.cuda()
+
+        testing(valid_dataloader, model, -1)
+        calculate_acc_from_txt(valid_csvpath, "./p1_valid.txt")
     else:
         train_dataloader = extractFrames(train_folder, train_csvpath, load_frame_data_train, "train", debug)
         valid_dataloader = extractFrames(valid_folder, valid_csvpath, load_frame_data_valid, "valid", debug)
         model = training(train_dataloader, valid_dataloader, "./loss.jpg")
-        testing(valid_dataloader, model)
+        testing(valid_dataloader, model, -1)
         calculate_acc_from_txt(valid_csvpath, "./p1_valid.txt")

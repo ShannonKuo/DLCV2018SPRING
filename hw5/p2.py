@@ -29,33 +29,33 @@ debug = 0
 read_feature = 0
 load_frame_data = 1
 read_valid_txt = 0
-batch_size = 8
+batch_size = 16
 learning_rate = 1e-4
 n_class = 11
-hidden_size = 256
+hidden_size = 128
 debug_num = 10
 
 if debug == 1:
     num_epochs = 1
 else:
-    num_epochs = 40
+    num_epochs = 60
 
 def weights_init(m):
     for name, param in m.named_parameters():
         if 'bias' in name:
-            nn.init.constant(param, 0.0)
+            nn.init.constant_(param, 1.0)
         elif 'weight' in name:
-            nn.init.orthogonal(param, gain=1)
+            nn.init.orthogonal_(param, gain=1)
 
 class RNN_model(nn.Module):
     def __init__(self, hidden_size):
         super(RNN_model, self).__init__()
         self.hidden_size = hidden_size
 
-        self.rnn = nn.LSTM(2048, hidden_size, 2, dropout=0.1, bidirectional=True)
-        self.out = nn.Linear(hidden_size*2, 11)
+        self.rnn = nn.LSTM(2048, hidden_size, 1, dropout=0.2, bidirectional=True)
+        self.dropout = nn.Dropout(p=0.2)
+        self.out = nn.Linear(hidden_size * 2, 11)
         self.softmax = nn.Softmax()
-
     def step(self, input, hidden=None):
         input = input.view(len(input), -1).unsqueeze(1)
         output, hidden = self.rnn(input, hidden)
@@ -64,6 +64,7 @@ class RNN_model(nn.Module):
     def forward(self, inputs, hidden=None, steps=0):
         if steps == 0: steps = len(inputs)
         output, hidden = self.step(inputs, hidden)
+        output = self.dropout(output)
         output = self.out(output).view(len(inputs), -1)
         output = output[-1]
         output = self.softmax(output)
@@ -218,6 +219,7 @@ if __name__ == '__main__':
         print("read feature...")
         train_features = read_feature_from_file(train_csvpath, train_feature_txt)
         valid_features = read_feature_from_file(valid_csvpath, valid_feature_txt)
+
     else:
         print("produce feature...")
         train_dataloader = extractFrames2(train_folder, train_csvpath, load_frame_data, "train", debug, batch_size)
@@ -227,14 +229,16 @@ if __name__ == '__main__':
         model_p1.load_state_dict(torch.load('./p1.pth'))
         train_features = get_feature(train_dataloader, model_p1, train_csvpath,  train_feature_txt)
         valid_features = get_feature(valid_dataloader, model_p1, valid_csvpath,  valid_feature_txt)
-
-    print("construct RNN model...")
-    if torch.cuda.is_available():
-        model_RNN = RNN_model(hidden_size).cuda()
+    if test == 0:
+        print("construct RNN model...")
+        if torch.cuda.is_available():
+            model_RNN = RNN_model(hidden_size).cuda()
+        else:
+            model_RNN = RNN_model(hidden_size).cpu()
+        print(count_parameters(model_RNN))
+        model_RNN = training(train_features, valid_features, model_RNN, "./p2_loss.jpg", output_filename)
     else:
-        model_RNN = RNN_model(hidden_size).cpu()
-
-    print(count_parameters(model_RNN))
-    model_RNN = training(train_features, valid_features, model_RNN, "./p2_loss.jpg", output_filename)
+        model_RNN = RNN_model.model()
+        model_RNN.load_state_dict(torch.load('./p2.pth'))
     testing(valid_features, model_RNN, output_filename)
     calculate_acc_from_txt(valid_csvpath, output_filename)
