@@ -16,6 +16,7 @@ import os
 import sys
 import numpy as np
 import csv
+import h5py
 import skvideo.io
 import skimage.transform
 import collections
@@ -25,197 +26,63 @@ from HW5_data.reader import getVideoList
 
 debug_num = 10
 n_class = 11
-batch_size = 4
+batch_size = 32
 
 img_transform = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
 
-def extractFrames(folder, csvpath, load, train, debug = 0, frame_num=16):
+def extractFrames(folder, csvpath, load, output_filename, debug = 0, frame_num=16, batch_size=32):
     print("extract frames...")
-    file_list = []
-    frames = []
     labels = []
     video_list = getVideoList(csvpath)
+    frames = np.zeros((batch_size, frame_num, 240, 320, 3))
     cnt = 0
+    
     if (load == 0):
         for i in range(len(video_list["Video_name"])):
             frame = readShortVideo(folder, video_list["Video_category"][i],
                                     video_list["Video_name"][i], frame_num=frame_num)
-            for j in range(len(frame)):
-                frames.append(np.moveaxis(frame[j], -1, 0))
-                #frames.append(img_transform(frame[j]))
-                label = np.zeros(n_class)
-                label[int(video_list["Action_labels"][i])] = 1
-                labels.append(label)
-                cnt += 1
+            #frame = np.moveaxis(frame, -1, 1)
+            frame = frame.reshape(1, frame.shape[0], frame.shape[1], frame.shape[2], frame.shape[3])
+            if i == 0:
+                frames = frame
+            else:
+                frames = np.concatenate((frames, frame), axis=0)
+            if i % 100 == 0:
+                print(i)
+                print(frames.shape)
             if debug == 1 and i >= debug_num - 1:
                 break
+    frames = np.moveaxis(frames, -1, 2)
+    for i in range(len(video_list["Video_name"])):
+        label = np.zeros(n_class)
+        label[int(video_list["Action_labels"][i])] = 1
+        labels.append(label)
+        
+        if debug == 1 and i >= debug_num - 1:
+            break
 
-    if train == "train":
-        if load == 0:
-            try:
-                os.remove("./frames.txt")
-                os.remove("./labels.txt")
-            except OSError:
-                pass
-            with open("./frames.txt", "wb") as fp:   #Pickling
-                pickle.dump(frames, fp)
-            with open("./labels.txt", "wb") as fp:   #Pickling
-                pickle.dump(labels, fp)
-        elif load == 1:
-            with open("./frames.txt", "rb") as fp:   # Unpickling
-                frames = pickle.load(fp)
-            with open("./labels.txt", "rb") as fp:   # Unpickling
-                labels = pickle.load(fp)
-    elif train == "valid":
-        if load == 0:
-            try:
-                os.remove("./frames_valid.txt")
-                os.remove("./labels_valid.txt")
-            except OSError:
-                pass
-            with open("./frames_valid.txt", "wb") as fp:   #Pickling
-                pickle.dump(frames, fp)
-            with open("./labels_valid.txt", "wb") as fp:   #Pickling
-                pickle.dump(labels, fp)
-        elif load == 1:
-            with open("./frames_valid.txt", "rb") as fp:   # Unpickling
-                frames = pickle.load(fp)
-            with open("./labels_valid.txt", "rb") as fp:   # Unpickling
-                labels = pickle.load(fp)
+    if load == 0:
+        try:
+            os.remove(output_filename)
+        except OSError:
+            pass
+        f = h5py.File(output_filename, "w")
+        f.create_dataset("frames", data = frames)
+    elif load == 1:
+        f = h5py.File(output_filename, "r")
+        frames = f['frames'][:]
+
     if debug == 1:
-        print(len(frames))
-        print(len(labels))
-        data = [(frames[i], labels[i]) for i in range(debug_num * frame_num)]
+        data = [(frames[i], labels[i]) for i in range(debug_num)]
     else:
-        data = [(frames[i], labels[i]) for i in range(len(frames))]
-    dataloader = DataLoader(data, batch_size=frame_num, shuffle=False)
+        data = [(frames[i], labels[i]) for i in range(frames.shape[0])]
+    print(frames.shape)
+    print(len(labels))
+    dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     return dataloader
-
-def extractFrames2(folder, csvpath, load, train, debug = 0, frame_num=16):
-    print("extract frames...")
-    file_list = []
-    frames = []
-    labels = []
-    video_list = getVideoList(csvpath)
-    cnt = 0
-    if (load == 0):
-        for i in range(len(video_list["Video_name"])):
-            frame = readShortVideo(folder, video_list["Video_category"][i],
-                                    video_list["Video_name"][i], frame_num=frame_num)
-            for j in range(len(frame)):
-                frames.append(np.moveaxis(frame[j], -1, 0))
-                #frames.append(img_transform(frame[j]))
-                label = np.zeros(n_class)
-                label[int(video_list["Action_labels"][i])] = 1
-                labels.append(label)
-                cnt += 1
-            if debug == 1 and i >= debug_num - 1:
-                break
-
-    if train == "train":
-        if load == 0:
-            try:
-                os.remove("./frames.txt")
-                os.remove("./labels.txt")
-            except OSError:
-                pass
-            with open("./frames.txt", "wb") as fp:   #Pickling
-                pickle.dump(frames, fp)
-            with open("./labels.txt", "wb") as fp:   #Pickling
-                pickle.dump(labels, fp)
-        elif load == 1:
-            with open("./frames.txt", "rb") as fp:   # Unpickling
-                frames = pickle.load(fp)
-            with open("./labels.txt", "rb") as fp:   # Unpickling
-                labels = pickle.load(fp)
-
-    elif train == "valid":
-        if load == 0:
-            try:
-                os.remove("./frames_valid.txt")
-                os.remove("./labels_valid.txt")
-            except OSError:
-                pass
-            with open("./frames_valid.txt", "wb") as fp:   #Pickling
-                pickle.dump(frames, fp)
-            with open("./labels_valid.txt", "wb") as fp:   #Pickling
-                pickle.dump(labels, fp)
-        elif load == 1:
-            with open("./frames_valid.txt", "rb") as fp:   # Unpickling
-                frames = pickle.load(fp)
-            with open("./labels_valid.txt", "rb") as fp:   # Unpickling
-                labels = pickle.load(fp)
-    if debug == 1:
-        data = [(frames[i], labels[i]) for i in range(debug_num * frame_num)]
-    else:
-        data = [(frames[i], labels[i]) for i in range(len(frames))]
-    dataloader = DataLoader(data, batch_size=1, shuffle=False)
-    return dataloader
-
-def extractFrames3(folder, csvpath, load, train, debug = 0, frame_num=16):
-    print("extract frames...")
-    file_list = []
-    frames = []
-    labels = []
-    video_list = getVideoList(csvpath)
-    cnt = 0
-    if (load == 0):
-        for i in range(len(video_list["Video_name"])):
-            frame = readShortVideo(folder, video_list["Video_category"][i],
-                                    video_list["Video_name"][i], frame_num=frame_num)
-            for j in range(len(frame)):
-                frames.append(np.moveaxis(frame[j], -1, 0))
-                #frames.append(img_transform(frame[j]))
-                label = np.zeros(n_class)
-                label[int(video_list["Action_labels"][i])] = 1
-                labels.append(label)
-                cnt += 1
-            if debug == 1 and i >= debug_num - 1:
-                break
-
-    if train == "train":
-        if load == 0:
-            try:
-                os.remove("./frames.txt")
-                os.remove("./labels.txt")
-            except OSError:
-                pass
-            with open("./frames.txt", "wb") as fp:   #Pickling
-                pickle.dump(frames, fp)
-            with open("./labels.txt", "wb") as fp:   #Pickling
-                pickle.dump(labels, fp)
-        elif load == 1:
-            with open("./frames.txt", "rb") as fp:   # Unpickling
-                frames = pickle.load(fp)
-            with open("./labels.txt", "rb") as fp:   # Unpickling
-                labels = pickle.load(fp)
-
-    elif train == "valid":
-        if load == 0:
-            try:
-                os.remove("./frames_valid.txt")
-                os.remove("./labels_valid.txt")
-            except OSError:
-                pass
-            with open("./frames_valid.txt", "wb") as fp:   #Pickling
-                pickle.dump(frames, fp)
-            with open("./labels_valid.txt", "wb") as fp:   #Pickling
-                pickle.dump(labels, fp)
-        elif load == 1:
-            with open("./frames_valid.txt", "rb") as fp:   # Unpickling
-                frames = pickle.load(fp)
-            with open("./labels_valid.txt", "rb") as fp:   # Unpickling
-                labels = pickle.load(fp)
-    if debug == 1:
-        data = [(frames[i], labels[i]) for i in range(debug_num * frame_num)]
-    else:
-        data = [(frames[i], labels[i]) for i in range(len(frames))]
-    dataloader = DataLoader(data, batch_size=1, shuffle=False)
-    return dataloader
-
 
 
 def compute_correct(preds, labels):

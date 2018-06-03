@@ -27,10 +27,11 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
 debug = 0
-read_feature = 1
+read_feature = 0
 load_frame_data = 1
 read_valid_txt = 0
-batch_size = 16
+batch_size = 32
+frame_num = 16
 test = 0
 n_class = 11
 debug_num = 10
@@ -63,26 +64,21 @@ class RNN_model(nn.Module):
         self.softmax = nn.Softmax()
 
     def step(self, input, hidden=None):
-        input = input.view(len(input), -1).unsqueeze(1)
-
         h0 = torch.zeros(lstm_layer*2, input.size(1), self.hidden_size) # 2 for bidirection 
         c0 = torch.zeros(lstm_layer*2, input.size(1), self.hidden_size)
         if torch.cuda.is_available():
             h0 = h0.cuda()
             c0 = c0.cuda()
-        
         output, hidden = self.rnn(input, (h0, c0))
-        #output, hidden = self.rnn(input, hidden)
+        output = output[:, -1, :]
         return output, hidden
 
     def forward(self, inputs, hidden=None, steps=0):
-        if steps == 0: steps = len(inputs)
+        if steps == 0: steps = len(inputs[1])
         output, hidden = self.step(inputs, hidden)
         output = self.dropout(output)
         output = self.out(output).view(len(inputs), -1)
-        output = output[-1]
         output = self.softmax(output)
-        output = output.view(1, -1)
         return output, hidden
 
 def training(data_loader, valid_dataloader, model, loss_filename, output_filename):
@@ -99,7 +95,7 @@ def training(data_loader, valid_dataloader, model, loss_filename, output_filenam
         for data in data_loader:
             cnn_feature = data[0].type(torch.FloatTensor)
             true_label = data[1].type(torch.FloatTensor)
-            true_label = true_label[0].view(1, n_class)
+            true_label = true_label.view(-1, n_class)
             if torch.cuda.is_available():
                 cnn_feature = Variable(cnn_feature).cuda()
                 true_label = Variable(true_label).cuda()
@@ -136,7 +132,7 @@ def testing(data_loader, model, save_filename):
     for data in data_loader:
         cnn_feature = data[0].type(torch.FloatTensor)
         true_label = data[1].type(torch.FloatTensor)
-        true_label = true_label[0].view(1, n_class)
+        true_label = true_label.view(-1, n_class)
         if torch.cuda.is_available():
             cnn_feature = Variable(cnn_feature).cuda()
             true_label = Variable(true_label).cuda()
@@ -161,17 +157,7 @@ def testing(data_loader, model, save_filename):
 
 def get_feature(data_loader, model, csvpath, output_filename, mode):
     print("get feature...")
-    """if debug == 1:
-        features = np.zeros((batch_size * 10, 2048))
-    elif mode == "train":
-        features = np.zeros((batch_size * 3236, 2048))
-    elif mode == "valid":
-        features = np.zeros((batch_size * 517, 2048))
-    elif model == "test":
-        features = np.zeros((batch_size * 398, 2048))
-    """
-    features = np.zeros((1, 2048))
-    cnt = 0
+    features = np.zeros((1, frame_num, 2048))
     for i, data in enumerate(data_loader):
         if i % 100 == 0:
             print(i)
@@ -180,23 +166,19 @@ def get_feature(data_loader, model, csvpath, output_filename, mode):
             img = Variable(img).cuda()
         outputs = model.output_feature(img)
         outputs = outputs.data.cpu().numpy()
-        for j in range(outputs.shape[0]):
-            output = np.reshape(outputs[j], (-1, 2048))
-            if cnt == 0:
-                features = output
-            else:
-                features = np.concatenate((features, output), axis=0)
-            cnt += 1
-    print(features.shape)    
+        outputs = np.reshape(outputs, (-1, frame_num, 2048))
+        if i == 0:
+            features = outputs
+        else:
+            features = np.concatenate((features, outputs), axis=0)
     video_list = getVideoList(csvpath)
     labels = video_list["Action_labels"]
     
     one_hot_labels = []
     for i in range(len(labels)):
-        for j in range(batch_size):
-            label = np.zeros(n_class)
-            label[int(video_list["Action_labels"][i])] = 1
-            one_hot_labels.append(label)
+        label = np.zeros(n_class)
+        label[int(video_list["Action_labels"][i])] = 1
+        one_hot_labels.append(label)
 
     data = [(features[i], one_hot_labels[i]) for i in range(len(features))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
@@ -214,9 +196,6 @@ def get_feature(data_loader, model, csvpath, output_filename, mode):
     return dataloader
 
 def read_feature_from_file(csvpath, filename):
-    #features = []
-    #with open(filename, "rb") as fp:   # Unpickling
-    #    features = pickle.load(fp)
     f = h5py.File(filename, 'r')
     features = f['features'][:]
     video_list = getVideoList(csvpath)
@@ -224,10 +203,9 @@ def read_feature_from_file(csvpath, filename):
 
     one_hot_labels = []
     for i in range(len(labels)):
-        for j in range(batch_size):
-            label = np.zeros(n_class)
-            label[int(video_list["Action_labels"][i])] = 1
-            one_hot_labels.append(label)
+        label = np.zeros(n_class)
+        label[int(video_list["Action_labels"][i])] = 1
+        one_hot_labels.append(label)
     print("len of feature: " + str(features.shape[0]))
     print("feature size: " + str(features[0].shape))
     data = [(features[i], one_hot_labels[i]) for i in range(len(features))]
@@ -251,6 +229,8 @@ if __name__ == '__main__':
     output_filename = "./p2_result.txt"
     train_feature_txt = "./train_feature.h5"
     valid_feature_txt = "./valid_feature.h5"
+    train_output_frame_file = "./frames_train.h5"
+    valid_output_frame_file = "./frames_valid.h5"
     if test == 0:
         if read_feature == 1:
             print("read feature...")
@@ -259,8 +239,8 @@ if __name__ == '__main__':
  
         else:
             print("produce feature...")
-            train_dataloader = extractFrames2(train_folder, train_csvpath, load_frame_data, "train", debug, batch_size)
-            valid_dataloader = extractFrames2(valid_folder, valid_csvpath, load_frame_data, "valid", debug, batch_size)
+            train_dataloader = extractFrames(train_folder, train_csvpath, load_frame_data, train_output_frame_file, debug, frame_num, batch_size)
+            valid_dataloader = extractFrames(valid_folder, valid_csvpath, load_frame_data, valid_output_frame_file, debug, frame_num, batch_size)
             print("load p1 model...")
             model_p1 = training_model()
             model_p1.load_state_dict(torch.load('./p1.pth'))
@@ -275,7 +255,6 @@ if __name__ == '__main__':
         else:
             model_RNN = RNN_model(hidden_size).cpu()
         print(count_parameters(model_RNN))
-        print(model_RNN)
         model_RNN = training(train_features, valid_features, model_RNN, "./p2_loss.jpg", output_filename)
         testing(valid_features, model_RNN, output_filename)
         calculate_acc_from_txt(valid_csvpath, output_filename)

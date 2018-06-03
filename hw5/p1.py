@@ -17,7 +17,6 @@ import csv
 import skvideo.io
 import skimage.transform
 import collections
-import pickle
 from HW5_data.reader import readShortVideo
 from HW5_data.reader import getVideoList
 from util import *
@@ -28,9 +27,10 @@ debug = 1
 load_frame_data_train = 1
 load_frame_data_valid = 1
 read_valid_txt = 0
-test = 1
-batch_size = 16
-learning_rate = 1e-4
+test = 0
+batch_size = 32
+frame_num = 16
+learning_rate = 1e-3
 n_class = 11
 debug_num = 10
 if debug == 1:
@@ -49,44 +49,54 @@ class training_model(nn.Module):
         self.softmax = nn.Softmax()
 
     def output_feature(self, x):
-        x = self.pretrained(x)
-        avg_feature = np.mean(np.array(x.data), axis = 0)
-        avg_feature = np.reshape(avg_feature, (1, 2048))
-        avg_feature = torch.from_numpy(avg_feature)
-        avg_feature = torch.squeeze(avg_feature, 1)
-        if torch.cuda.is_available():
-            avg_feature = Variable(avg_feature).cuda()
-        else:
-            avg_feature = Variable(avg_feature).cpu()
+        features = torch.zeros((x.shape[0], frame_num, 2048))
+        for i in range(x.shape[0]):
+            input = x[i]
+            feature = self.pretrained(input)
+            #avg_feature = np.mean(np.array(input.data), axis = 0)
+            #avg_feature = np.reshape(avg_feature, (1, 2048))
+            #avg_feature = torch.from_numpy(avg_feature)
+            #avg_feature = torch.squeeze(avg_feature, 1)
+            if torch.cuda.is_available():
+                feature = Variable(feature).cuda()
+            else:
+                feature = Variable(feature).cpu()
+            features[i] = feature
 
-        return(avg_feature)
+        return(features)
 
     def forward(self, x):
-        x = self.pretrained(x)
-        avg_feature = np.mean(np.array(x.data), axis = 0)
-        avg_feature = np.reshape(avg_feature, (1, 2048))
-        avg_feature = torch.from_numpy(avg_feature)
-        avg_feature = torch.squeeze(avg_feature, 1)
+        output = torch.zeros((x.shape[0], n_class))
+        for i in range(x.shape[0]):
+            input = x[i]
+            input = self.pretrained(input)
+            avg_feature = np.mean(np.array(input.data), axis = 0)
+            avg_feature = np.reshape(avg_feature, (1, 2048))
+            avg_feature = torch.from_numpy(avg_feature)
+            avg_feature = torch.squeeze(avg_feature, 1)
+            if torch.cuda.is_available():
+                avg_feature = Variable(avg_feature).cuda()
+            else:
+                avg_feature = Variable(avg_feature).cpu()
+         
+            z = self.fcn(avg_feature)
+            z = self.softmax(z)
+            z = torch.squeeze(z, 1)    
+            output[i] = z
         if torch.cuda.is_available():
-            avg_feature = Variable(avg_feature).cuda()
-        else:
-            avg_feature = Variable(avg_feature).cpu()
-
-        z = self.fcn(avg_feature)
-        z = self.softmax(z)
-        z = torch.squeeze(z, 1)
-        return z
-
+            output = output.cuda()
+        return output                       
+                                       
 def training(data_loader, valid_dataloader, loss_filename):
-    print("start training")
-    if torch.cuda.is_available():
+    print("start training")            
+    if torch.cuda.is_available():      
         model = training_model().cuda()
-    else:
+    else:                              
         model = training_model().cpu()
-    model.train()
+    model.train()                  
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
                                 weight_decay=1e-5)
-
+                                   
     max_acc = -1
     all_loss = []
     for epoch in range(num_epochs):
@@ -95,7 +105,7 @@ def training(data_loader, valid_dataloader, loss_filename):
         for data in data_loader:
             img = data[0].type(torch.FloatTensor)
             true_label = data[1].type(torch.FloatTensor)
-            true_label = true_label[0].view(1, n_class)
+            true_label = true_label.view(-1, n_class)
             if torch.cuda.is_available():
                 img = Variable(img).cuda()
                 true_label = Variable(true_label).cuda()
@@ -117,11 +127,11 @@ def training(data_loader, valid_dataloader, loss_filename):
         acc = testing(valid_dataloader, model, max_acc)
         if (acc >= max_acc):
             max_acc = acc
-            torch.save(model.state_dict(), './p1.pth')
+            torch.save(model.state_dict(), './p1_test.pth')
             print("save model")
         
 
-    plot_loss(all_loss, loss_filename)
+        plot_loss(all_loss, loss_filename)
     return model
 
 def testing(data_loader, model, max_acc):
@@ -133,7 +143,7 @@ def testing(data_loader, model, max_acc):
     for data in data_loader:
         img = data[0].type(torch.FloatTensor)
         true_label = data[1].type(torch.FloatTensor)
-        true_label = true_label[0].view(1, n_class)
+        true_label = true_label.view(-1, n_class)
         if torch.cuda.is_available():
             img = Variable(img).cuda()
             true_label = Variable(true_label).cuda()
@@ -178,11 +188,12 @@ if __name__ == '__main__':
     train_csvpath = "./HW5_data/TrimmedVideos/label/gt_train.csv"
     valid_csvpath = "./HW5_data/TrimmedVideos/label/gt_valid.csv"
     p1_result = "./p1_valid.txt"
-    
+    train_output_frame_file = "./frames_train.h5" 
+    valid_output_frame_file = "./frames_valid.h5" 
     if read_valid_txt == 1:
         calculate_acc_from_txt(valid_csvpath, p1_result)
     elif test == 1:
-        valid_dataloader = extractFrames(valid_folder, valid_csvpath, 1, "valid", 0)
+        valid_dataloader = extractFrames(valid_folder, valid_csvpath, 1, valid_output_frame_file, 0, frame_num, batch_size)
         model = training_model()
         model.load_state_dict(torch.load("./p1.pth"))
         if torch.cuda.is_available():
@@ -191,8 +202,8 @@ if __name__ == '__main__':
         testing(valid_dataloader, model, -1)
         calculate_acc_from_txt(valid_csvpath, "./p1_valid.txt")
     else:
-        train_dataloader = extractFrames(train_folder, train_csvpath, load_frame_data_train, "train", debug)
-        valid_dataloader = extractFrames(valid_folder, valid_csvpath, load_frame_data_valid, "valid", debug)
+        train_dataloader = extractFrames(train_folder, train_csvpath, load_frame_data_train, train_output_frame_file, debug, frame_num, batch_size)
+        valid_dataloader = extractFrames(valid_folder, valid_csvpath, load_frame_data_valid, valid_output_frame_file, debug, frame_num, batch_size)
         model = training(train_dataloader, valid_dataloader, "./loss.jpg")
         testing(valid_dataloader, model, -1)
         calculate_acc_from_txt(valid_csvpath, "./p1_valid.txt")
