@@ -13,6 +13,7 @@ import scipy.misc
 import os
 import sys
 import numpy as np
+import h5py
 import csv
 import skvideo.io
 import skimage.transform
@@ -26,14 +27,18 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
 debug = 0
-read_feature = 0
+read_feature = 1
 load_frame_data = 1
 read_valid_txt = 0
 batch_size = 16
-learning_rate = 1e-4
+test = 0
 n_class = 11
-hidden_size = 128
 debug_num = 10
+dropout_gate = float(sys.argv[1])
+dropout_last = float(sys.argv[2])
+lstm_layer = int(sys.argv[3])
+hidden_size = int(sys.argv[4])
+learning_rate = float(sys.argv[5])
 
 if debug == 1:
     num_epochs = 1
@@ -52,13 +57,22 @@ class RNN_model(nn.Module):
         super(RNN_model, self).__init__()
         self.hidden_size = hidden_size
 
-        self.rnn = nn.LSTM(2048, hidden_size, 1, dropout=0.2, bidirectional=True)
-        self.dropout = nn.Dropout(p=0.2)
+        self.rnn = nn.LSTM(2048, hidden_size, lstm_layer, dropout=dropout_gate, bidirectional=True)
+        self.dropout = nn.Dropout(p=dropout_last)
         self.out = nn.Linear(hidden_size * 2, 11)
         self.softmax = nn.Softmax()
+
     def step(self, input, hidden=None):
         input = input.view(len(input), -1).unsqueeze(1)
-        output, hidden = self.rnn(input, hidden)
+
+        h0 = torch.zeros(lstm_layer*2, input.size(1), self.hidden_size) # 2 for bidirection 
+        c0 = torch.zeros(lstm_layer*2, input.size(1), self.hidden_size)
+        if torch.cuda.is_available():
+            h0 = h0.cuda()
+            c0 = c0.cuda()
+        
+        output, hidden = self.rnn(input, (h0, c0))
+        #output, hidden = self.rnn(input, hidden)
         return output, hidden
 
     def forward(self, inputs, hidden=None, steps=0):
@@ -145,21 +159,38 @@ def testing(data_loader, model, save_filename):
 
     print("test score: " + str(float(correct) / float(cnt)))
 
-def get_feature(data_loader, model, csvpath, output_filename):
+def get_feature(data_loader, model, csvpath, output_filename, mode):
     print("get feature...")
-    features = []
+    """if debug == 1:
+        features = np.zeros((batch_size * 10, 2048))
+    elif mode == "train":
+        features = np.zeros((batch_size * 3236, 2048))
+    elif mode == "valid":
+        features = np.zeros((batch_size * 517, 2048))
+    elif model == "test":
+        features = np.zeros((batch_size * 398, 2048))
+    """
+    features = np.zeros((1, 2048))
+    cnt = 0
     for i, data in enumerate(data_loader):
+        if i % 100 == 0:
+            print(i)
         img = data[0].type(torch.FloatTensor)
-        #if torch.cuda.is_available():
-        #    img = Variable(img).cuda()
-        #else:
-        img = Variable(img).cpu()
+        if torch.cuda.is_available():
+            img = Variable(img).cuda()
         outputs = model.output_feature(img)
-        features.append(outputs.data)
-
+        outputs = outputs.data.cpu().numpy()
+        for j in range(outputs.shape[0]):
+            output = np.reshape(outputs[j], (-1, 2048))
+            if cnt == 0:
+                features = output
+            else:
+                features = np.concatenate((features, output), axis=0)
+            cnt += 1
+    print(features.shape)    
     video_list = getVideoList(csvpath)
     labels = video_list["Action_labels"]
-
+    
     one_hot_labels = []
     for i in range(len(labels)):
         for j in range(batch_size):
@@ -168,21 +199,26 @@ def get_feature(data_loader, model, csvpath, output_filename):
             one_hot_labels.append(label)
 
     data = [(features[i], one_hot_labels[i]) for i in range(len(features))]
+    dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
+    
     try:
         os.remove(output_filename)
     except OSError:
         pass
- 
-    with open(output_filename, "wb") as fp:   #Pickling
-        pickle.dump(features, fp)
+    print("start produce feature .h5")
+    #with open(output_filename, "wb") as fp:   #Pickling
+    #    pickle.dump(features, fp)
+    f = h5py.File(output_filename, 'w')
+    f.create_dataset('features', data=features)
 
-    dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     return dataloader
 
 def read_feature_from_file(csvpath, filename):
-    features = []
-    with open(filename, "rb") as fp:   # Unpickling
-        features = pickle.load(fp)
+    #features = []
+    #with open(filename, "rb") as fp:   # Unpickling
+    #    features = pickle.load(fp)
+    f = h5py.File(filename, 'r')
+    features = f['features'][:]
     video_list = getVideoList(csvpath)
     labels = video_list["Action_labels"]
 
@@ -192,7 +228,7 @@ def read_feature_from_file(csvpath, filename):
             label = np.zeros(n_class)
             label[int(video_list["Action_labels"][i])] = 1
             one_hot_labels.append(label)
-    print("len of feature: " + str(len(features)))
+    print("len of feature: " + str(features.shape[0]))
     print("feature size: " + str(features[0].shape))
     data = [(features[i], one_hot_labels[i]) for i in range(len(features))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
@@ -213,32 +249,39 @@ if __name__ == '__main__':
     train_csvpath = "./HW5_data/TrimmedVideos/label/gt_train.csv"
     valid_csvpath = "./HW5_data/TrimmedVideos/label/gt_valid.csv"
     output_filename = "./p2_result.txt"
-    train_feature_txt = "./train_feature.txt"
-    valid_feature_txt = "./valid_feature.txt"
-    if read_feature == 1:
-        print("read feature...")
-        train_features = read_feature_from_file(train_csvpath, train_feature_txt)
-        valid_features = read_feature_from_file(valid_csvpath, valid_feature_txt)
-
-    else:
-        print("produce feature...")
-        train_dataloader = extractFrames2(train_folder, train_csvpath, load_frame_data, "train", debug, batch_size)
-        valid_dataloader = extractFrames2(valid_folder, valid_csvpath, load_frame_data, "valid", debug, batch_size)
-        print("load p1 model...")
-        model_p1 = training_model()
-        model_p1.load_state_dict(torch.load('./p1.pth'))
-        train_features = get_feature(train_dataloader, model_p1, train_csvpath,  train_feature_txt)
-        valid_features = get_feature(valid_dataloader, model_p1, valid_csvpath,  valid_feature_txt)
+    train_feature_txt = "./train_feature.h5"
+    valid_feature_txt = "./valid_feature.h5"
     if test == 0:
+        if read_feature == 1:
+            print("read feature...")
+            train_features = read_feature_from_file(train_csvpath, train_feature_txt)
+            valid_features = read_feature_from_file(valid_csvpath, valid_feature_txt)
+ 
+        else:
+            print("produce feature...")
+            train_dataloader = extractFrames2(train_folder, train_csvpath, load_frame_data, "train", debug, batch_size)
+            valid_dataloader = extractFrames2(valid_folder, valid_csvpath, load_frame_data, "valid", debug, batch_size)
+            print("load p1 model...")
+            model_p1 = training_model()
+            model_p1.load_state_dict(torch.load('./p1.pth'))
+            
+            if torch.cuda.is_available:
+                model_p1 = model_p1.cuda()
+            train_features = get_feature(train_dataloader, model_p1, train_csvpath, train_feature_txt, "train")
+            valid_features = get_feature(valid_dataloader, model_p1, valid_csvpath, valid_feature_txt, "valid")
         print("construct RNN model...")
         if torch.cuda.is_available():
             model_RNN = RNN_model(hidden_size).cuda()
         else:
             model_RNN = RNN_model(hidden_size).cpu()
         print(count_parameters(model_RNN))
+        print(model_RNN)
         model_RNN = training(train_features, valid_features, model_RNN, "./p2_loss.jpg", output_filename)
-    else:
+        testing(valid_features, model_RNN, output_filename)
+        calculate_acc_from_txt(valid_csvpath, output_filename)
+        
+    else: 
         model_RNN = RNN_model.model()
         model_RNN.load_state_dict(torch.load('./p2.pth'))
-    testing(valid_features, model_RNN, output_filename)
-    calculate_acc_from_txt(valid_csvpath, output_filename)
+        testing(valid_features, model_RNN, output_filename)
+        calculate_acc_from_txt(valid_csvpath, output_filename)
