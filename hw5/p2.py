@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
 debug = 0
-read_feature = 0
+read_feature = 1
 load_frame_data = 1
 read_valid_txt = 0
 batch_size = 32
@@ -60,7 +60,8 @@ class RNN_model(nn.Module):
 
         self.rnn = nn.LSTM(2048, hidden_size, lstm_layer, dropout=dropout_gate, bidirectional=True)
         self.dropout = nn.Dropout(p=dropout_last)
-        self.out = nn.Linear(hidden_size * 2, 11)
+        self.fc1 = nn.Linear(hidden_size * 2, 256)
+        self.fc2 = nn.Linear(256, 11)
         self.softmax = nn.Softmax()
 
     def step(self, input, hidden=None):
@@ -76,14 +77,15 @@ class RNN_model(nn.Module):
     def forward(self, inputs, hidden=None, steps=0):
         if steps == 0: steps = len(inputs[1])
         output, hidden = self.step(inputs, hidden)
-        output = self.dropout(output)
-        output = self.out(output).view(len(inputs), -1)
+        #output = self.dropout(output)
+        output = self.fc1(output)
+        output = self.fc2(output)
         output = self.softmax(output)
         return output, hidden
 
 def training(data_loader, valid_dataloader, model, loss_filename, output_filename):
     print("start training")
-    model.apply(weights_init)
+    #model.apply(weights_init)
     model.train()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
@@ -155,7 +157,7 @@ def testing(data_loader, model, save_filename):
 
     print("test score: " + str(float(correct) / float(cnt)))
 
-def get_feature(data_loader, model, csvpath, output_filename, mode):
+def get_feature(data_loader, model, csvpath, output_filename):
     print("get feature...")
     features = np.zeros((1, frame_num, 2048))
     for i, data in enumerate(data_loader):
@@ -239,16 +241,16 @@ if __name__ == '__main__':
  
         else:
             print("produce feature...")
-            train_dataloader = extractFrames(train_folder, train_csvpath, load_frame_data, train_output_frame_file, debug, frame_num, batch_size)
-            valid_dataloader = extractFrames(valid_folder, valid_csvpath, load_frame_data, valid_output_frame_file, debug, frame_num, batch_size)
+            train_dataloader = extractFrames(train_folder, train_csvpath, load_frame_data, train_output_frame_file, debug, frame_num, 1)
+            valid_dataloader = extractFrames(valid_folder, valid_csvpath, load_frame_data, valid_output_frame_file, debug, frame_num, 1)
             print("load p1 model...")
             model_p1 = training_model()
             model_p1.load_state_dict(torch.load('./p1.pth'))
             
             if torch.cuda.is_available:
                 model_p1 = model_p1.cuda()
-            train_features = get_feature(train_dataloader, model_p1, train_csvpath, train_feature_txt, "train")
-            valid_features = get_feature(valid_dataloader, model_p1, valid_csvpath, valid_feature_txt, "valid")
+            train_features = get_feature(train_dataloader, model_p1, train_csvpath, train_feature_txt)
+            valid_features = get_feature(valid_dataloader, model_p1, valid_csvpath, valid_feature_txt)
         print("construct RNN model...")
         if torch.cuda.is_available():
             model_RNN = RNN_model(hidden_size).cuda()

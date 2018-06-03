@@ -23,7 +23,7 @@ from util import *
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 1
+debug = 0
 load_frame_data_train = 1
 load_frame_data_valid = 1
 read_valid_txt = 0
