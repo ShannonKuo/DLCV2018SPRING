@@ -23,9 +23,9 @@ from util import *
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 0
-load_frame_data_train = 1
-load_frame_data_valid = 1
+debug = 1
+load_frame_data_train = 0
+load_frame_data_valid = 0
 read_valid_txt = 0
 test = 0
 batch_size = 32
@@ -134,7 +134,7 @@ def training(data_loader, valid_dataloader, loss_filename):
         acc = testing(valid_dataloader, model, max_acc)
         if (acc >= max_acc):
             max_acc = acc
-            torch.save(model.state_dict(), './p1_test.pth')
+            torch.save(model.state_dict(), './p1.pth')
             print("save model")
         
 
@@ -200,7 +200,8 @@ if __name__ == '__main__':
     if read_valid_txt == 1:
         calculate_acc_from_txt(valid_csvpath, p1_result)
     elif test == 1:
-        valid_dataloader = extractFrames(valid_folder, valid_csvpath, 1, valid_output_frame_file, 0, frame_num, batch_size)
+        valid_dataset = extractFrames(valid_folder, valid_csvpath, 1, valid_output_frame_file, 0, frame_num)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
         model = training_model()
         model.load_state_dict(torch.load("./p1.pth"))
         if torch.cuda.is_available():
@@ -209,8 +210,10 @@ if __name__ == '__main__':
         testing(valid_dataloader, model, -1)
         calculate_acc_from_txt(valid_csvpath, "./p1_valid.txt")
     else:
-        train_dataloader = extractFrames(train_folder, train_csvpath, load_frame_data_train, train_output_frame_file, debug, frame_num, batch_size)
-        valid_dataloader = extractFrames(valid_folder, valid_csvpath, load_frame_data_valid, valid_output_frame_file, debug, frame_num, batch_size)
+        train_dataset = extractFrames(train_folder, train_csvpath, load_frame_data_train, train_output_frame_file, debug, frame_num)
+        train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
+        valid_dataset = extractFrames(valid_folder, valid_csvpath, load_frame_data_valid, valid_output_frame_file, debug, frame_num)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
         model = training(train_dataloader, valid_dataloader, "./loss.jpg")
         testing(valid_dataloader, model, -1)
         calculate_acc_from_txt(valid_csvpath, "./p1_valid.txt")

@@ -26,9 +26,9 @@ from util import *
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 0
-read_feature = 1
-load_frame_data = 1
+debug = 1
+read_feature = 0
+load_frame_data = 0
 read_valid_txt = 0
 batch_size = 32
 frame_num = 16
@@ -94,7 +94,8 @@ def training(data_loader, valid_dataloader, model, loss_filename, output_filenam
     for epoch in range(num_epochs):
         idx = 0
         train_loss = 0.0
-        for data in data_loader:
+        for i, data in enumerate(data_loader):
+            print(data[0].shape)
             cnn_feature = data[0].type(torch.FloatTensor)
             true_label = data[1].type(torch.FloatTensor)
             true_label = true_label.view(-1, n_class)
@@ -241,23 +242,30 @@ if __name__ == '__main__':
  
         else:
             print("produce feature...")
-            train_dataloader = extractFrames(train_folder, train_csvpath, load_frame_data, train_output_frame_file, debug, frame_num, 1)
-            valid_dataloader = extractFrames(valid_folder, valid_csvpath, load_frame_data, valid_output_frame_file, debug, frame_num, 1)
+            train_dataset = extractFrames(train_folder, train_csvpath,load_frame_data,
+                                          train_output_frame_file, debug, frame_num)
+            train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=False)
+            valid_dataset = extractFrames(valid_folder, valid_csvpath, load_frame_data,
+                                          valid_output_frame_file, debug, frame_num)
+            valid_dataloader = DataLoader(valid_dataset, batch_size=1, shuffle=False)
             print("load p1 model...")
             model_p1 = training_model()
             model_p1.load_state_dict(torch.load('./p1.pth'))
             
-            if torch.cuda.is_available:
+            if torch.cuda.is_available():
                 model_p1 = model_p1.cuda()
-            train_features = get_feature(train_dataloader, model_p1, train_csvpath, train_feature_txt)
-            valid_features = get_feature(valid_dataloader, model_p1, valid_csvpath, valid_feature_txt)
+            train_features = get_feature(train_dataloader, model_p1, train_csvpath,
+                                         train_feature_txt)
+            valid_features = get_feature(valid_dataloader, model_p1, valid_csvpath,
+                                         valid_feature_txt)
         print("construct RNN model...")
         if torch.cuda.is_available():
             model_RNN = RNN_model(hidden_size).cuda()
         else:
             model_RNN = RNN_model(hidden_size).cpu()
         print(count_parameters(model_RNN))
-        model_RNN = training(train_features, valid_features, model_RNN, "./p2_loss.jpg", output_filename)
+        model_RNN = training(train_features, valid_features, model_RNN,
+                             "./p2_loss.jpg", output_filename)
         testing(valid_features, model_RNN, output_filename)
         calculate_acc_from_txt(valid_csvpath, output_filename)
         

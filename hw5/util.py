@@ -33,11 +33,11 @@ img_transform = transforms.Compose([
     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
 
-def extractFrames(folder, csvpath, load, output_filename, debug = 0, frame_num=16, batch_size=32):
+def extractFrames(folder, csvpath, load, output_filename, debug = 0, frame_num=16):
     print("extract frames...")
     labels = []
     video_list = getVideoList(csvpath)
-    frames = np.zeros((batch_size, frame_num, 240, 320, 3))
+    frames = np.zeros((1, frame_num, 240, 320, 3))
     cnt = 0
     
     if (load == 0):
@@ -52,14 +52,13 @@ def extractFrames(folder, csvpath, load, output_filename, debug = 0, frame_num=1
                 frames = np.concatenate((frames, frame), axis=0)
             if i % 100 == 0:
                 print(i)
-                print(frames.shape)
             if debug == 1 and i >= debug_num - 1:
                 break
     frames = np.moveaxis(frames, -1, 2)
     for i in range(len(video_list["Video_name"])):
         label = np.zeros(n_class)
         label[int(video_list["Action_labels"][i])] = 1
-        labels.append(label)
+        labels.append(label.astype(np.float))
         
         if debug == 1 and i >= debug_num - 1:
             break
@@ -79,10 +78,7 @@ def extractFrames(folder, csvpath, load, output_filename, debug = 0, frame_num=1
         data = [(frames[i], labels[i]) for i in range(debug_num)]
     else:
         data = [(frames[i], labels[i]) for i in range(frames.shape[0])]
-    print(frames.shape)
-    print(len(labels))
-    dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
-    return dataloader
+    return data
 
 
 def compute_correct(preds, labels):
