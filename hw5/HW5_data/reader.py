@@ -15,7 +15,6 @@ def readShortVideo(video_path, video_category, video_name, downsample_factor=12,
 
     @return: (T, H, W, 3) ndarray, T indicates total sampled frames, H and W is heights and widths
     '''
-
     filepath = video_path + '/' + video_category
     filename = [file for file in os.listdir(filepath) if file.startswith(video_name)]
     video = os.path.join(filepath,filename[0])
