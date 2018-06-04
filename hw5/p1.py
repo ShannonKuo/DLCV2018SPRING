@@ -93,10 +93,17 @@ def training(data_loader, valid_dataloader, loss_filename):
         model = training_model().cuda()
     else:                              
         model = training_model().cpu()
+
     model.train()                  
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
-                                weight_decay=1e-5)
+    #optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
+    #                            weight_decay=1e-5)
                                    
+    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=learning_rate, weight_decay=1e-5)
+
+    for p in model.pretrained.parameters():
+        p.requires_grad = False
+    for p in model.pretrained.fc.parameters():
+        p.requires_grad = True
     max_acc = -1
     all_loss = []
     for epoch in range(num_epochs):
