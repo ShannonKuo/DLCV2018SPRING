@@ -26,25 +26,25 @@ from util import *
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 1
+debug = 0
 read_feature = 0
 load_frame_data = 0
 read_valid_txt = 0
 batch_size = 32
 frame_num = 16
-test = 0
+test = 1
 n_class = 11
 debug_num = 10
-dropout_gate = float(sys.argv[1])
-dropout_last = float(sys.argv[2])
-lstm_layer = int(sys.argv[3])
-hidden_size = int(sys.argv[4])
-learning_rate = float(sys.argv[5])
+dropout_gate = 0.0
+dropout_last = 0.3
+lstm_layer = 1
+hidden_size = 128
+learning_rate = 0.0001
 
 if debug == 1:
     num_epochs = 1
 else:
-    num_epochs = 60
+    num_epochs = 25
 
 def weights_init(m):
     for name, param in m.named_parameters():
@@ -58,47 +58,41 @@ class RNN_model(nn.Module):
         super(RNN_model, self).__init__()
         self.hidden_size = hidden_size
 
-        self.rnn = nn.LSTM(2048, hidden_size, lstm_layer, dropout=dropout_gate, bidirectional=True)
+        self.rnn = nn.LSTM(2048, hidden_size, lstm_layer, dropout=dropout_gate, bidirectional=True, batch_first=True)
         self.dropout = nn.Dropout(p=dropout_last)
         self.fc1 = nn.Linear(hidden_size * 2, 256)
-        self.fc2 = nn.Linear(256, 11)
+        self.fc2 = nn.Linear(256, 64)
+        self.fc3 = nn.Linear(64, 11)
         self.softmax = nn.Softmax()
 
     def step(self, input, hidden=None):
-        h0 = torch.zeros(lstm_layer*2, input.size(1), self.hidden_size) # 2 for bidirection 
-        c0 = torch.zeros(lstm_layer*2, input.size(1), self.hidden_size)
-        if torch.cuda.is_available():
-            h0 = h0.cuda()
-            c0 = c0.cuda()
-        output, hidden = self.rnn(input, (h0, c0))
+        output, hidden = self.rnn(input, hidden)
         output = output[:, -1, :]
         return output, hidden
 
-    def forward(self, inputs, hidden=None, steps=0):
-        if steps == 0: steps = len(inputs[1])
+    def forward(self, inputs, hidden=None):
         output, hidden = self.step(inputs, hidden)
-        #output = self.dropout(output)
+        output = self.dropout(output)
         output = self.fc1(output)
         output = self.fc2(output)
+        output = self.fc3(output)
         output = self.softmax(output)
         return output, hidden
 
 def training(data_loader, valid_dataloader, model, loss_filename, output_filename):
     print("start training")
-    #model.apply(weights_init)
-    model.train()
+    model.apply(weights_init)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
                                 weight_decay=1e-5)
     all_loss = []
     for epoch in range(num_epochs):
+        model.train()
         idx = 0
         train_loss = 0.0
         for i, data in enumerate(data_loader):
-            print(data[0].shape)
             cnn_feature = data[0].type(torch.FloatTensor)
             true_label = data[1].type(torch.FloatTensor)
-            true_label = true_label.view(-1, n_class)
             if torch.cuda.is_available():
                 cnn_feature = Variable(cnn_feature).cuda()
                 true_label = Variable(true_label).cuda()
@@ -118,14 +112,15 @@ def training(data_loader, valid_dataloader, model, loss_filename, output_filenam
                 format(epoch+1, num_epochs, train_loss))
         torch.save(model.state_dict(), './p2.pth')
         all_loss.append(loss.item())
+        plot_loss(all_loss, loss_filename)
         testing(valid_dataloader, model, output_filename)
 
-        plot_loss(all_loss, loss_filename)
     return model
 
 def testing(data_loader, model, save_filename):
     cnt = 0
     correct = 0
+    model.eval()
     try:
         os.remove(save_filename)
     except OSError:
@@ -135,7 +130,6 @@ def testing(data_loader, model, save_filename):
     for data in data_loader:
         cnn_feature = data[0].type(torch.FloatTensor)
         true_label = data[1].type(torch.FloatTensor)
-        true_label = true_label.view(-1, n_class)
         if torch.cuda.is_available():
             cnn_feature = Variable(cnn_feature).cuda()
             true_label = Variable(true_label).cuda()
@@ -160,6 +154,7 @@ def testing(data_loader, model, save_filename):
 
 def get_feature(data_loader, model, csvpath, output_filename):
     print("get feature...")
+    model.eval()
     features = np.zeros((1, frame_num, 2048))
     for i, data in enumerate(data_loader):
         if i % 100 == 0:
@@ -209,8 +204,7 @@ def read_feature_from_file(csvpath, filename):
         label = np.zeros(n_class)
         label[int(video_list["Action_labels"][i])] = 1
         one_hot_labels.append(label)
-    print("len of feature: " + str(features.shape[0]))
-    print("feature size: " + str(features[0].shape))
+    print("feature size: " + str(features.shape))
     data = [(features[i], one_hot_labels[i]) for i in range(len(features))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     return dataloader
@@ -270,7 +264,20 @@ if __name__ == '__main__':
         calculate_acc_from_txt(valid_csvpath, output_filename)
         
     else: 
-        model_RNN = RNN_model.model()
+        print("start testing...")
+        valid_dataset = extractFrames(valid_folder, valid_csvpath, load_frame_data,
+                                      valid_output_frame_file, debug, frame_num)
+        valid_dataloader = DataLoader(valid_dataset, batch_size=1, shuffle=False)
+        print("load p1 model...")
+        model_p1 = training_model()
+        model_p1.load_state_dict(torch.load('./p1.pth'))
+        
+        if torch.cuda.is_available():
+            model_p1 = model_p1.cuda()
+        valid_features = get_feature(valid_dataloader, model_p1, valid_csvpath,
+                                     valid_feature_txt)
+
+        model_RNN = RNN_model()
         model_RNN.load_state_dict(torch.load('./p2.pth'))
         testing(valid_features, model_RNN, output_filename)
         calculate_acc_from_txt(valid_csvpath, output_filename)

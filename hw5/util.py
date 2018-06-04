@@ -54,7 +54,7 @@ def extractFrames(folder, csvpath, load, output_filename, debug = 0, frame_num=1
                 print(i)
             if debug == 1 and i >= debug_num - 1:
                 break
-    frames = np.moveaxis(frames, -1, 2)
+        frames = np.moveaxis(frames, -1, 2)
     for i in range(len(video_list["Video_name"])):
         label = np.zeros(n_class)
         label[int(video_list["Action_labels"][i])] = 1
@@ -71,6 +71,7 @@ def extractFrames(folder, csvpath, load, output_filename, debug = 0, frame_num=1
         f = h5py.File(output_filename, "w")
         f.create_dataset("frames", data = frames)
     elif load == 1:
+        print("read frames")
         f = h5py.File(output_filename, "r")
         frames = f['frames'][:]
 
@@ -86,7 +87,6 @@ def compute_correct(preds, labels):
     preds_ = np.argmax(preds, 1)
     labels_ = np.argmax(labels, 1)
     for i in range(len(preds_)):
-        print(labels_[i])
         if preds_[i] == labels_[i]:
             correct += 1
     return correct
