@@ -49,7 +49,7 @@ class training_model(nn.Module):
         self.softmax = nn.Softmax()
 
     def output_feature(self, x):
-        features = torch.zeros((x.shape[0], frame_num, 2048))
+        features = torch.zeros((x.shape[0], x.shape[1], 2048))
         for i in range(x.shape[0]):
             input = x[i]
             feature = self.pretrained(input)
@@ -67,6 +67,7 @@ class training_model(nn.Module):
 
     def forward(self, x):
         output = torch.zeros((x.shape[0], n_class))
+        features = torch.zeros((x.shape[0], x.shape[1], 2048))
         for i in range(x.shape[0]):
             input = x[i]
             input = self.pretrained(input)
@@ -74,6 +75,7 @@ class training_model(nn.Module):
             avg_feature = np.reshape(avg_feature, (1, 2048))
             avg_feature = torch.from_numpy(avg_feature)
             avg_feature = torch.squeeze(avg_feature, 1)
+            features[i] = input
             if torch.cuda.is_available():
                 avg_feature = Variable(avg_feature).cuda()
             else:
@@ -85,7 +87,7 @@ class training_model(nn.Module):
             output[i] = z
         if torch.cuda.is_available():
             output = output.cuda()
-        return output                       
+        return output, features 
                                        
 def training(data_loader, valid_dataloader, loss_filename):
     print("start training")            
@@ -120,7 +122,7 @@ def training(data_loader, valid_dataloader, loss_filename):
                 img = Variable(img).cpu()
                 true_label = Variable(true_label).cpu()
             # ===================forward=====================
-            predict_label = model(img)
+            predict_label, _ = model(img)
             loss = nn.BCELoss()(predict_label, true_label)
             # ===================backward====================
             optimizer.zero_grad()
@@ -158,7 +160,7 @@ def testing(data_loader, model, max_acc):
             img = Variable(img).cpu()
             true_label = Variable(true_label).cpu()
         # ===================forward=====================
-        predict_label = model(img)
+        predict_label, _ = model(img)
         predict_label = np.array(predict_label.data)
         true_label = np.array(true_label.data)
         correct += compute_correct(predict_label, true_label)
