@@ -277,7 +277,10 @@ if __name__ == '__main__':
         valid_features = get_feature(valid_dataloader, model_p1, valid_csvpath,
                                      valid_feature_txt)
 
-        model_RNN = RNN_model()
+        if torch.cuda.is_available():
+            model_RNN = RNN_model(hidden_size).cuda()
+        else:
+            model_RNN = RNN_model(hidden_size).cpu()
         model_RNN.load_state_dict(torch.load('./p2.pth'))
         testing(valid_features, model_RNN, output_filename)
         calculate_acc_from_txt(valid_csvpath, output_filename)
