@@ -81,7 +81,6 @@ def extractFrames_p3(img_folder, label_folder, debug = 0, frame_num=64, mode="tr
     dirNames = [os.path.join(img_folder, subfolder) for subfolder in os.listdir(img_folder) 
                 if not subfolder.startswith(".")]
     videos = []
-    print(len(dirNames))
     for i, dir in enumerate(dirNames):
         if os.path.isdir(dir) == False:
             continue
@@ -137,7 +136,6 @@ def extractFrames_p3(img_folder, label_folder, debug = 0, frame_num=64, mode="tr
 
 def read_labels_p3(img_folder, label_folder, debug, frame_num, mode):
     label_list = [file for file in os.listdir(img_folder) if not file.startswith(".")]
-    #all_labels = np.zeros((1, frame_num, n_class))
     all_labels = []
     for i, f in enumerate(label_list):
         full_filename = os.path.join(label_folder, f) + '.txt'
@@ -145,34 +143,33 @@ def read_labels_p3(img_folder, label_folder, debug, frame_num, mode):
             continue
         print(full_filename)
         file = open(full_filename, "r")
-        cnt = 0
-        labels = np.zeros((frame_num, n_class))
-        if mode == "train":
-            frame_rate = len(label_list) / frame_num
-        else:
-            frame_rate = 1
+        labels = []
+        labels_sample = []
         cnt = 0
         for j, line in enumerate(file):
             if line == '\n':
                 continue
-            #######################TODO
-            if cnt % frame_rate == 0:
-                label = np.zeros((1, n_class))
-                label[0][int(line[:-1])] = 1
-                if cnt == 0:
-                    labels = label
-                else:
-                    labels = np.concatenate((labels, label), axis=0)
+            label = np.zeros(n_class)
+            label[int(line[:-1])] = 1
+            labels.append(label)
             cnt += 1
         if mode == "train":
-            while labels.shape[0] < frame_num:
-                labels = np.concatenate((labels, label), axis=0)
+            frame_rate = cnt / frame_num
+            for j in range(len(labels)):
+                if j % frame_rate == 0:
+                    labels_sample.append(labels[j])
+            while len(labels_sample) < frame_num:
+                labels_sample.append(label)
+            labels = labels_sample
+        labels = np.array(labels)
         all_labels.append(labels)
         if debug == 1 and i >= debug_num - 1:
             break
         file.close()
     if mode == "train":
-        all_labels_final = np.array(all_labels)
+        all_labels_final = np.zeros((len(all_labels), frame_num, all_labels[0].shape[1]))
+        for i in range(len(all_labels)):
+            all_labels_final[i] = all_labels[i]
     else:
         max_frame_num = 0
         for i in range(len(all_labels)):
@@ -182,7 +179,6 @@ def read_labels_p3(img_folder, label_folder, debug, frame_num, mode):
         for i in range(len(all_labels)):
             for j in range(all_labels[i].shape[0]):
                 all_labels_final[i, j] = all_labels[i][j]
-    all_labels_final = np.moveaxis(all_labels_final, -1, 2)
 
     return all_labels_final
 
