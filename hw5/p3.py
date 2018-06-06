@@ -26,11 +26,12 @@ debug = 1
 read_feature = 0
 load_frame_data = 0
 read_valid_txt = 0
-batch_size = 32
-frame_rate = 64
+batch_size = 8
+frame_num = 64
 test = 0
+mode = ""
 n_class = 11
-debug_num = 3
+debug_num = 2
 dropout_gate = 0.0
 dropout_last = 0.3
 lstm_layer = 1
@@ -66,8 +67,8 @@ class RNN_model(nn.Module):
         return output, hidden
 
     def forward(self, inputs, hidden=None):
-        pack = torch.nn.utils.rnn.pack_padded_sequence(inputs, 500, batch_first=True)
-        output, hidden = self.step(pack, hidden)
+        #pack = torch.nn.utils.rnn.pack_padded_sequence(inputs, 500, batch_first=True)
+        output, hidden = self.step(inputs, hidden)
         output = self.dropout(output)
         output = self.fc1(output)
         output = self.fc2(output)
@@ -75,7 +76,8 @@ class RNN_model(nn.Module):
         output = self.softmax(output)
         return output, hidden
 
-def training(data_loader, valid_dataloader, model, loss_filename, output_filename):
+def training(data_loader, valid_dataloader, model, loss_filename,
+             valid_img_folder, output_folder):
     print("start training")
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
@@ -108,20 +110,19 @@ def training(data_loader, valid_dataloader, model, loss_filename, output_filenam
         torch.save(model.state_dict(), './p2.pth')
         all_loss.append(loss.item())
         plot_loss(all_loss, loss_filename)
-        testing(valid_dataloader, model, output_filename)
+        testing(valid_dataloader, model, valid_img_folder, output_folder)
 
     return model
 
-def testing(data_loader, model, save_filename):
+def testing(data_loader, model, img_folder, output_folder):
     cnt = 0
     correct = 0
     model.eval()
-    try:
-        os.remove(save_filename)
-    except OSError:
-        pass
-    file = open(save_filename, "a+")
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
 
+    dirNames = [subfolder for subfolder in os.listdir(img_folder) if not subfolder.startswith('.')]
+    dir_id = 0
     for data in data_loader:
         cnn_feature = data[0].type(torch.FloatTensor)
         true_label = data[1].type(torch.FloatTensor)
@@ -135,36 +136,45 @@ def testing(data_loader, model, save_filename):
         predict_label, hidden = model(cnn_feature, None)
         predict_label = np.array(predict_label.data)
         true_label = np.array(true_label.data)
-        correct += compute_correct(predict_label, true_label)
-        cnt += predict_label.shape[0]
-        preds_ = np.argmax(predict_label, 1)
-        for i in range(len(preds_)):
-            file.write(str(preds_[i]))
-            file.write('\n')
+        for j in range(predict_label.shape[0]):
+            correct += compute_correct(predict_label[j], true_label[j])
+            cnt += predict_label[j].shape[0]
+            preds_ = np.argmax(predict_label[j], 1)
+            save_filename = os.path.join(output_folder, dirNames[dir_id]) + ".txt"
+            print(save_filename)
+            try:
+                os.remove(save_filename)
+            except OSError:
+                pass
+            file = open(save_filename, "a+")
+ 
+            for i in range(len(preds_)):
+                file.write(str(preds_[i]))
+                file.write('\n')
 
-    file.write('\n')
-    file.close()
+            file.write('\n')
+            file.close()
+            dir_id += 1
 
     print("test score: " + str(float(correct) / float(cnt)))
 
 def get_feature(data_loader, model, output_filename, img_folder, label_folder):
     print("get feature...")
     model.eval()
-    features = np.zeros((1, frame_rate, 2048))
+    features = np.zeros((1, frame_num, 2048))
     for i, data in enumerate(data_loader):
-        if i % 100 == 0:
-            print(i)
+        print(i)
         img = data[0].type(torch.FloatTensor)
         if torch.cuda.is_available():
             img = Variable(img).cuda()
         outputs = model.output_feature(img)
         outputs = outputs.data.cpu().numpy()
-        outputs = np.reshape(outputs, (-1, frame_rate, 2048))
+        outputs = np.reshape(outputs, (-1, frame_num, 2048))
         if i == 0:
             features = outputs
         else:
             features = np.concatenate((features, outputs), axis=0)
-    all_labels = read_labels_p3(img_folder, label_folder, debug, frame_rate)
+    all_labels = read_labels_p3(img_folder, label_folder, debug, frame_num, mode)
     data = [(features[i], all_labels[i]) for i in range(len(features))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     
@@ -180,19 +190,14 @@ def get_feature(data_loader, model, output_filename, img_folder, label_folder):
 
     return dataloader
 
-def read_feature_from_file(filename, label_folder):
+def read_feature_from_file(filename, img_folder, label_folder):
     f = h5py.File(filename, 'r')
     features = f['features'][:]
-    video_list = getVideoList(csvpath)
-    labels = video_list["Action_labels"]
+    
+    labels = read_labels_p3(img_folder, label_folder, debug, frame_num, mode)
 
-    one_hot_labels = []
-    for i in range(len(labels)):
-        label = np.zeros(n_class)
-        label[int(video_list["Action_labels"][i])] = 1
-        one_hot_labels.append(label)
     print("feature size: " + str(features.shape))
-    data = [(features[i], one_hot_labels[i]) for i in range(len(features))]
+    data = [(features[i], labels[i]) for i in range(len(features))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     return dataloader
 
@@ -210,23 +215,28 @@ if __name__ == '__main__':
     train_label_folder = "./HW5_data/FullLengthVideos/labels/train/"
     valid_img_folder = "./HW5_data/FullLengthVideos/videos/valid/"
     valid_label_folder = "./HW5_data/FullLengthVideos/labels/valid/"
-    output_filename = "./p3_result.txt"
     train_feature_txt = "./train_feature_p3.h5"
     valid_feature_txt = "./valid_feature_p3.h5"
+    output_label_folder = "./p3_output/"
 
     if test == 0:
         if read_feature == 1:
             print("read feature...")
-            train_features = read_feature_from_file(train_feature_txt)
-            valid_features = read_feature_from_file(valid_feature_txt)
+            train_features = read_feature_from_file(train_feature_txt, 
+                                                    train_img_folder, train_label_folder)
+            valid_features = read_feature_from_file(valid_feature_txt,
+                                                    valid_img_folder, valid_label_folder)
  
         else:
             print("produce feature...")
+            mode = "train"
             train_dataset = extractFrames_p3(train_img_folder, train_label_folder,
-                                           debug, frame_rate)
+                                           debug, frame_num, mode)
             train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=False)
+
+            mode = "test"
             valid_dataset = extractFrames_p3(valid_img_folder, valid_label_folder,
-                                          debug, frame_rate)
+                                          debug, frame_num, mode)
             valid_dataloader = DataLoader(valid_dataset, batch_size=1, shuffle=False)
             print("load p1 model...")
             model_p1 = training_model()
@@ -235,9 +245,10 @@ if __name__ == '__main__':
             else:
                 model_p1 = model_p1.cpu()
             model_p1.load_state_dict(torch.load('./p1.pth'))
-            
+            mode = "train"
             train_features = get_feature(train_dataloader, model_p1,
                                          train_feature_txt, train_img_folder, train_label_folder)
+            mode = "test"
             valid_features = get_feature(valid_dataloader, model_p1,
                                          valid_feature_txt, valid_img_folder, valid_label_folder)
         print("construct RNN model...")
@@ -248,14 +259,15 @@ if __name__ == '__main__':
         model_RNN.load_state_dict(torch.load('./p2.pth'))
 
         model_RNN = training(train_features, valid_features, model_RNN,
-                             "./p3_loss.jpg", output_filename)
-        testing(valid_features, model_RNN, output_filename)
-        calculate_acc_from_txt(valid_csvpath, output_filename)
+                             "./p3_loss.jpg", valid_img_folder, output_label_folder)
+        testing(valid_features, model_RNN, valid_img_folder, output_label_folder)
+        calculate_acc_from_txt_p3(valid_label_folder, output_label_folder)
         
     else: 
         print("start testing...")
+        mode = "test"
         valid_dataset = extractFrames_p3(valid_img_folder, valid_label_folder,
-                                       0, frame_rate)
+                                       0, frame_num)
         valid_dataloader = DataLoader(valid_dataset, batch_size=1, shuffle=False)
         print("load p1 model...")
         model_p1 = training_model()
@@ -271,5 +283,5 @@ if __name__ == '__main__':
         else:
             model_RNN = RNN_model(hidden_size).cpu()
         model_RNN.load_state_dict(torch.load('./p2.pth'))
-        testing(valid_features, model_RNN, output_filename)
-        calculate_acc_from_txt(valid_csvpath, output_filename)
+        testing(valid_features, model_RNN, valid_img_folder, output_label_folder)
+        calculate_acc_from_txt_p3(valid_label_folder, output_label_folder)

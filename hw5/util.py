@@ -25,8 +25,7 @@ import pickle
 #from HW5_data.reader import readShortVideo
 #from HW5_data.reader import getVideoList
 
-debug_num = 3
-max_frame_num = 64
+debug_num = 2
 n_class = 11
 
 def extractFrames(folder, csvpath, load, output_filename, debug = 0, frame_num=16):
@@ -77,12 +76,12 @@ def extractFrames(folder, csvpath, load, output_filename, debug = 0, frame_num=1
         data = [(frames[i], labels[i]) for i in range(frames.shape[0])]
     return data
 
-def extractFrames_p3(img_folder, label_folder, debug = 0, frame_rate=64):
+def extractFrames_p3(img_folder, label_folder, debug = 0, frame_num=64, mode="train"):
     print("extract frames...")
-    video_num = 0
-    videos = np.zeros((1, max_frame_num, 240, 320, 3))
-    #dirPath, dirNames, filenames = os.walk(img_folder)
-    dirNames = [os.path.join(img_folder, subfolder) for subfolder in os.listdir(img_folder)]
+    dirNames = [os.path.join(img_folder, subfolder) for subfolder in os.listdir(img_folder) 
+                if not subfolder.startswith(".")]
+    videos = []
+    print(len(dirNames))
     for i, dir in enumerate(dirNames):
         if os.path.isdir(dir) == False:
             continue
@@ -91,54 +90,55 @@ def extractFrames_p3(img_folder, label_folder, debug = 0, frame_rate=64):
         fileNames = [file for file in os.listdir(dir) if file.endswith('jpg')]
         fileNames.sort()
         cnt = 0
+
+        if mode == "train":
+            frame_rate = len(fileNames) / frame_num
+        else:
+            frame_rate = 1
+
         for j, f in enumerate(fileNames):
             full_filename = os.path.join(dir, f)
             if full_filename.endswith('.jpg'):
                 if j % frame_rate == 0:
                     frame = io.imread(full_filename)
                     frames.append(frame)
-        frames = np.array(frames)
-        frames_pad = np.zeros((1, max_frame_num, frames.shape[1], frames.shape[2], frames.shape[3]))
-        frames = np.reshape(frames, (1, frames.shape[0], frames.shape[1], frames.shape[2], frames.shape[3]))
-        for j in range(frames.shape[0]):
-            frames_pad[0, j] = frames[0, j]
-        if i == 0:
-            videos = frames_pad
-        else:
-            videos = np.concatenate((videos, frames_pad), axis=0)
-        if debug == 1 and video_num >= debug_num - 1:
-            break
-        video_num += 1
 
-    videos = np.moveaxis(videos, -1, 2)
+        if mode == "train":
+            while len(frames) < frame_num:
+                frames.append(frame)
+        frames = np.array(frames)
+        videos.append(frames)
+        if debug == 1 and i >= debug_num - 1:
+            break
+    if mode == "train":
+        videos_final = np.array(videos)
+    else:
+        max_frame_num = 0
+        for i in range(len(videos)):
+            if (videos[i].shape[0] > max_frame_num):
+                max_frame_num = videos[i].shape[0]
+        videos_final = np.zeros((len(videos), max_frame_num, videos[0].shape[1],
+                                 videos[0].shape[2], videos[0].shape[3]))
+        for i in range(len(videos)):
+            for j in range(videos[i].shape[0]):
+                videos_final[i, j] = videos[i][j]
+    videos_final = np.moveaxis(videos_final, -1, 2)
     print("all videos shape")
-    print(videos.shape)
-    all_labels = read_labels_p3(img_folder, label_folder, debug, frame_rate)
+    print(videos_final.shape)
+    all_labels = read_labels_p3(img_folder, label_folder, debug, frame_num, mode)
     print("all labels shape")
     print(all_labels.shape)
-    """
-    if load == 0:
-        try:
-            os.remove(output_filename)
-        except OSError:
-            pass
-        f = h5py.File(output_filename, "w")
-        f.create_dataset("frames", data = frames)
-    elif load == 1:
-        print("read frames")
-        f = h5py.File(output_filename, "r")
-        frames = f['frames'][:]
-    """
+
     if debug == 1:
-        data = [(videos[i], all_labels[i]) for i in range(debug_num)]
+        data = [(videos_final[i], all_labels[i]) for i in range(debug_num)]
     else:
-        data = [(videos[i], all_labels[i]) for i in range(videos.shape[0])]
+        data = [(videos_final[i], all_labels[i]) for i in range(videos_final.shape[0])]
     return data
 
-def read_labels_p3(img_folder, label_folder, debug, frame_rate):
-    #label_list = [file for file in os.listdir(label_folder) if file.endswith('txt')]
-    label_list = [file for file in os.listdir(img_folder)]
-    all_labels = np.zeros((1, max_frame_num, n_class))
+def read_labels_p3(img_folder, label_folder, debug, frame_num, mode):
+    label_list = [file for file in os.listdir(img_folder) if not file.startswith(".")]
+    #all_labels = np.zeros((1, frame_num, n_class))
+    all_labels = []
     for i, f in enumerate(label_list):
         full_filename = os.path.join(label_folder, f) + '.txt'
         if os.path.isfile(full_filename) == False:
@@ -146,34 +146,45 @@ def read_labels_p3(img_folder, label_folder, debug, frame_rate):
         print(full_filename)
         file = open(full_filename, "r")
         cnt = 0
-        labels = np.zeros((max_frame_num, n_class))
+        labels = np.zeros((frame_num, n_class))
+        if mode == "train":
+            frame_rate = len(label_list) / frame_num
+        else:
+            frame_rate = 1
+        cnt = 0
         for j, line in enumerate(file):
             if line == '\n':
                 continue
-            if j % frame_rate != 0:
-                continue
-            #label.append(int(line[:-1]))
-            label = np.zeros((1, n_class))
-            label[0][int(line[:-1])] = 1
-            if j == 0:
-                labels = label
-            else:
+            #######################TODO
+            if cnt % frame_rate == 0:
+                label = np.zeros((1, n_class))
+                label[0][int(line[:-1])] = 1
+                if cnt == 0:
+                    labels = label
+                else:
+                    labels = np.concatenate((labels, label), axis=0)
+            cnt += 1
+        if mode == "train":
+            while labels.shape[0] < frame_num:
                 labels = np.concatenate((labels, label), axis=0)
-
-        labels_pad = np.zeros((1, max_frame_num, n_class))
-        labels = np.reshape(labels, (1, labels.shape[0], labels.shape[1]))
-
-        for j in range(labels.shape[1]):
-            labels_pad[0, j] = labels[0, j]
-        if i == 0:
-            all_labels = labels_pad
-        else:
-            all_labels = np.concatenate((all_labels, labels_pad), axis=0)
+        all_labels.append(labels)
         if debug == 1 and i >= debug_num - 1:
             break
-    print("all labels shape")
-    print(all_labels.shape)
-    return all_labels
+        file.close()
+    if mode == "train":
+        all_labels_final = np.array(all_labels)
+    else:
+        max_frame_num = 0
+        for i in range(len(all_labels)):
+            if (all_labels[i].shape[0] > max_frame_num):
+                max_frame_num = all_labels[i].shape[0]
+        all_labels_final = np.zeros((len(all_labels), max_frame_num, all_labels[0].shape[1]))
+        for i in range(len(all_labels)):
+            for j in range(all_labels[i].shape[0]):
+                all_labels_final[i, j] = all_labels[i][j]
+    all_labels_final = np.moveaxis(all_labels_final, -1, 2)
+
+    return all_labels_final
 
 def compute_correct(preds, labels):
     correct = 0
@@ -229,6 +240,41 @@ def calculate_acc_from_txt(csvpath, output_filename):
             correct += 1
     file.close()
     print("acc score: " + str(float(correct) / len(predict)))
+
+def calculate_acc_from_txt_p3(label_folder, output_folder):
+    print("calculate acc from txt")
+    correct = 0
+    total_cnt = 0
+    file_list = [file for file in os.listdir(label_folder)]
+    for i in range(len(file_list)):
+        labels = []
+        predict = []
+        full_filename = os.path.join(output_folder, file_list[i])
+        print(full_filename)
+
+        if os.path.isfile(full_filename) == False:
+            continue
+        file_predict = open(full_filename, "r")
+        for line in file_predict:
+            if line == '\n':
+                continue
+            predict.append(int(line[:-1]))
+        file_predict.close()
+
+        file_true = open(os.path.join(label_folder, file_list[i]), "r")
+        for line in file_true:
+            if line == '\n':
+                continue
+            labels.append(int(line[:-1]))
+        file_true.close()
+
+        print("len of true labels: " + str(len(labels)))
+        print("len of predict labels: " + str(len(predict)))
+        total_cnt += len(predict)
+        for j in range(len(predict)):
+            if int(labels[i]) == int(predict[i]):
+                correct += 1
+    print("acc score: " + str(float(correct) / total_cnt))
 
 
 def readShortVideo(video_path, video_category, video_name, downsample_factor=12, rescale_factor=1, frame_num=4):
