@@ -26,7 +26,7 @@ debug = 1
 read_feature = 0
 load_frame_data = 0
 read_valid_txt = 0
-batch_size = 8
+batch_size = 1
 frame_num = 64
 test = 0
 mode = ""
@@ -167,13 +167,26 @@ def get_feature(data_loader, model, output_filename, img_folder, label_folder):
         img = data[0].type(torch.FloatTensor)
         if torch.cuda.is_available():
             img = Variable(img).cuda()
-        outputs = model.output_feature(img)
-        outputs = outputs.data.cpu().numpy()
-        outputs = np.reshape(outputs, (-1, frame_num, 2048))
+        frame_length = img.shape[1]
+        group_size = int(frame_length / 10)
+        for j in range(10):
+            print("j" + str(j))
+            if j == 4:
+                input = img[:, group_size * j:]
+            else:
+                input = img[:, group_size * j: group_size * (j+1)]
+            output = model.output_feature(input)
+            output = output.data.cpu().numpy()
+            if j == 0:
+                outputs = output
+            else:
+                outputs = np.concatenate((outputs, output), axis=1)
         if i == 0:
             features = outputs
         else:
             features = np.concatenate((features, outputs), axis=0)
+    print("feature shape")
+    print(features.shape)
     all_labels = read_labels_p3(img_folder, label_folder, debug, frame_num, mode)
     data = [(features[i], all_labels[i]) for i in range(len(features))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
