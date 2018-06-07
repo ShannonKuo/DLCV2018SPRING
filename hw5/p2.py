@@ -39,7 +39,7 @@ dropout_last = 0.3
 lstm_layer = 1
 hidden_size = 128
 learning_rate = 0.0001
-
+hidden_feature = []
 if debug == 1:
     num_epochs = 1
 else:
@@ -137,6 +137,7 @@ def testing(data_loader, model, save_filename):
             true_label = Variable(true_label).cpu()
         # ===================forward=====================
         predict_label, hidden = model(cnn_feature, None)
+        hidden_feature.append(hidden)
         predict_label = np.array(predict_label.data)
         true_label = np.array(true_label.data)
         correct += compute_correct(predict_label, true_label)
@@ -208,6 +209,29 @@ def read_feature_from_file(csvpath, filename):
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def calculate_tsne(csvpath, features, rnn_model):
+    color = []
+    video_list = getVideoList(csvpath)
+    for i, label in enumerate(video_list["Action_labels"]):
+        color.append(label)
+        if debug == 1 and i > 10:
+            break;
+    color = np.array(color)
+    #CNN
+    tsne = TSNE(n_components=2, init='pca', random_state=0)
+    Y = tsne.fit_transform(features)
+    plt.scatter(Y[:, 0], Y[:, 1], s=5, c=color, cmap=plt.cm.Spectral)
+    plt.title("t-SNE")
+    plt.savefig('./cnn_tsne.jpg')
+    plt.close()
+    #RNN
+    tsne = TSNE(n_components=2, init='pca', random_state=0)
+    Y = tsne.fit_transform(hidden_feature)
+    plt.scatter(Y[:, 0], Y[:, 1], s=5, c=color, cmap=plt.cm.Spectral)
+    plt.title("t-SNE")
+    plt.savefig('./rnn_tsne.jpg')
+    plt.close()
 
 if __name__ == '__main__':
 
@@ -281,3 +305,4 @@ if __name__ == '__main__':
         model_RNN.load_state_dict(torch.load('./p2.pth'))
         testing(valid_features, model_RNN, output_filename)
         calculate_acc_from_txt(valid_csvpath, output_filename)
+        calculate_tsne(valid_csvpath, valid_features)
