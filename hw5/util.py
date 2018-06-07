@@ -21,9 +21,6 @@ import skvideo.io
 from skimage import io
 import skimage.transform
 import collections
-import pickle
-#from HW5_data.reader import readShortVideo
-#from HW5_data.reader import getVideoList
 
 debug_num = 2
 n_class = 11
@@ -39,7 +36,6 @@ def extractFrames(folder, csvpath, load, output_filename, debug = 0, frame_num=1
         for i in range(len(video_list["Video_name"])):
             frame = readShortVideo(folder, video_list["Video_category"][i],
                                     video_list["Video_name"][i], frame_num=frame_num)
-            #frame = np.moveaxis(frame, -1, 1)
             frame = frame.reshape(1, frame.shape[0], frame.shape[1], frame.shape[2], frame.shape[3])
             if i == 0:
                 frames = frame
@@ -81,27 +77,29 @@ def extractFrames_p3(img_folder, label_folder, debug = 0, frame_num=64, mode="tr
     dirNames = [os.path.join(img_folder, subfolder) for subfolder in os.listdir(img_folder) 
                 if not subfolder.startswith(".")]
     videos = []
+    cnt_frames = []
     for i, dir in enumerate(dirNames):
         if os.path.isdir(dir) == False:
             continue
-        print("dir name : " + dir)
         frames = []
         fileNames = [file for file in os.listdir(dir) if file.endswith('jpg')]
         fileNames.sort()
         cnt = 0
 
         if mode == "train":
-            frame_rate = len(fileNames) / frame_num
+            frame_rate = int(len(fileNames) / frame_num)
         else:
             frame_rate = 1
-
         for j, f in enumerate(fileNames):
             full_filename = os.path.join(dir, f)
             if full_filename.endswith('.jpg'):
                 if j % frame_rate == 0:
                     frame = io.imread(full_filename)
                     frames.append(frame)
-
+                    cnt += 1
+                if mode == "train" and len(frames) >= frame_num:
+                    break;
+        cnt_frames.append(cnt)
         if mode == "train":
             while len(frames) < frame_num:
                 frames.append(frame)
@@ -110,7 +108,10 @@ def extractFrames_p3(img_folder, label_folder, debug = 0, frame_num=64, mode="tr
         if debug == 1 and i >= debug_num - 1:
             break
     if mode == "train":
-        videos_final = np.array(videos)
+        videos_final = np.zeros((len(videos), frame_num, videos[0].shape[1],
+                                 videos[0].shape[2], videos[0].shape[3]))
+        for i in range(videos_final.shape[0]): 
+            videos_final[i] = videos[i]
     else:
         max_frame_num = 0
         for i in range(len(videos)):
@@ -122,16 +123,11 @@ def extractFrames_p3(img_folder, label_folder, debug = 0, frame_num=64, mode="tr
             for j in range(videos[i].shape[0]):
                 videos_final[i, j] = videos[i][j]
     videos_final = np.moveaxis(videos_final, -1, 2)
-    print("all videos shape")
-    print(videos_final.shape)
     all_labels = read_labels_p3(img_folder, label_folder, debug, frame_num, mode)
-    print("all labels shape")
-    print(all_labels.shape)
-
     if debug == 1:
-        data = [(videos_final[i], all_labels[i]) for i in range(debug_num)]
+        data = [(videos_final[i], all_labels[i], cnt_frames[i]) for i in range(debug_num)]
     else:
-        data = [(videos_final[i], all_labels[i]) for i in range(videos_final.shape[0])]
+        data = [(videos_final[i], all_labels[i], cnt_frames[i]) for i in range(videos_final.shape[0])]
     return data
 
 def read_labels_p3(img_folder, label_folder, debug, frame_num, mode):
@@ -141,7 +137,6 @@ def read_labels_p3(img_folder, label_folder, debug, frame_num, mode):
         full_filename = os.path.join(label_folder, f) + '.txt'
         if os.path.isfile(full_filename) == False:
             continue
-        print(full_filename)
         file = open(full_filename, "r")
         labels = []
         labels_sample = []
@@ -154,10 +149,12 @@ def read_labels_p3(img_folder, label_folder, debug, frame_num, mode):
             labels.append(label)
             cnt += 1
         if mode == "train":
-            frame_rate = cnt / frame_num
+            frame_rate = int(cnt / frame_num)
             for j in range(len(labels)):
                 if j % frame_rate == 0:
                     labels_sample.append(labels[j])
+                if len(labels_sample) >= frame_num:
+                    break;
             while len(labels_sample) < frame_num:
                 labels_sample.append(label)
             labels = labels_sample
@@ -179,7 +176,6 @@ def read_labels_p3(img_folder, label_folder, debug, frame_num, mode):
         for i in range(len(all_labels)):
             for j in range(all_labels[i].shape[0]):
                 all_labels_final[i, j] = all_labels[i][j]
-
     return all_labels_final
 
 def compute_correct(preds, labels):
@@ -205,8 +201,6 @@ def butter_lowpass_filter(data, cutoff, fs, order=5):
 
 def plot_loss(all_loss, filename):
 
-    #all_loss = butter_lowpass_filter(all_loss, 3.667, 100.0, 6)
-    
     fig=plt.figure(figsize=(10, 10))
     t = np.arange(0.0, len(all_loss), 1.0)
     line, = plt.plot(t, all_loss, lw=2)
@@ -246,7 +240,6 @@ def calculate_acc_from_txt_p3(label_folder, output_folder):
         labels = []
         predict = []
         full_filename = os.path.join(output_folder, file_list[i])
-        print(full_filename)
 
         if os.path.isfile(full_filename) == False:
             continue
@@ -254,21 +247,20 @@ def calculate_acc_from_txt_p3(label_folder, output_folder):
         for line in file_predict:
             if line == '\n':
                 continue
-            predict.append(int(line[:-1]))
+            predict.append(line[:-1])
         file_predict.close()
 
         file_true = open(os.path.join(label_folder, file_list[i]), "r")
+        print(os.path.join(label_folder, file_list[i]))
         for line in file_true:
             if line == '\n':
                 continue
-            labels.append(int(line[:-1]))
+            labels.append(line[:-1])
         file_true.close()
 
-        print("len of true labels: " + str(len(labels)))
-        print("len of predict labels: " + str(len(predict)))
         total_cnt += len(predict)
         for j in range(len(predict)):
-            if int(labels[i]) == int(predict[i]):
+            if labels[j] == predict[j]:
                 correct += 1
     print("acc score: " + str(float(correct) / total_cnt))
 

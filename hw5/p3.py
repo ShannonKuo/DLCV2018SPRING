@@ -14,7 +14,6 @@ import csv
 import skvideo.io
 import skimage.transform
 import collections
-import pickle
 from HW5_data.reader import readShortVideo
 from HW5_data.reader import getVideoList
 from p1 import training_model
@@ -22,18 +21,18 @@ from util import *
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 1
+debug = 0
 read_feature = 0
 load_frame_data = 0
 read_valid_txt = 0
 batch_size = 1
-frame_num = 64
+frame_num = 256
 test = 0
 mode = ""
 n_class = 11
 debug_num = 2
 dropout_gate = 0.0
-dropout_last = 0.3
+dropout_last = 0.0
 lstm_layer = 1
 hidden_size = 128
 learning_rate = 0.0001
@@ -41,7 +40,7 @@ learning_rate = 0.0001
 if debug == 1:
     num_epochs = 1
 else:
-    num_epochs = 25
+    num_epochs = 50
 
 def weights_init(m):
     for name, param in m.named_parameters():
@@ -57,9 +56,8 @@ class RNN_model(nn.Module):
 
         self.rnn = nn.LSTM(2048, hidden_size, lstm_layer, dropout=dropout_gate, bidirectional=True, batch_first=True)
         self.dropout = nn.Dropout(p=dropout_last)
-        self.fc1 = nn.Linear(hidden_size * 2, 256)
-        self.fc2 = nn.Linear(256, 64)
-        self.fc3 = nn.Linear(64, 11)
+        self.fc1 = nn.Linear(hidden_size * 2, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, 11)
         self.softmax = nn.Softmax()
 
     def step(self, input, hidden=None):
@@ -67,13 +65,13 @@ class RNN_model(nn.Module):
         return output, hidden
 
     def forward(self, inputs, hidden=None):
-        #pack = torch.nn.utils.rnn.pack_padded_sequence(inputs, 500, batch_first=True)
         output, hidden = self.step(inputs, hidden)
         output = self.dropout(output)
         output = self.fc1(output)
         output = self.fc2(output)
-        output = self.fc3(output)
+        output = output[0]
         output = self.softmax(output)
+        output = output.view(batch_size, -1, n_class)
         return output, hidden
 
 def training(data_loader, valid_dataloader, model, loss_filename,
@@ -98,7 +96,7 @@ def training(data_loader, valid_dataloader, model, loss_filename,
                 true_label = Variable(true_label).cpu()
             # ===================forward=====================
             predict_label, hidden = model(cnn_feature, None)
-            loss = nn.BCELoss()(predict_label, true_label)
+            loss = nn.BCELoss()(predict_label[0], true_label[0])
             # ===================backward====================
             optimizer.zero_grad()
             loss.backward()
@@ -107,7 +105,7 @@ def training(data_loader, valid_dataloader, model, loss_filename,
         # ===================log========================
         print('epoch [{}/{}], loss:{:.4f}'.
                 format(epoch+1, num_epochs, train_loss))
-        torch.save(model.state_dict(), './p2.pth')
+        torch.save(model.state_dict(), './p3.pth')
         all_loss.append(loss.item())
         plot_loss(all_loss, loss_filename)
         testing(valid_dataloader, model, valid_img_folder, output_folder)
@@ -123,9 +121,12 @@ def testing(data_loader, model, img_folder, output_folder):
 
     dirNames = [subfolder for subfolder in os.listdir(img_folder) if not subfolder.startswith('.')]
     dir_id = 0
+
     for data in data_loader:
         cnn_feature = data[0].type(torch.FloatTensor)
         true_label = data[1].type(torch.FloatTensor)
+        length = data[2]
+        true_label = true_label[:, 0: length, :]
         if torch.cuda.is_available():
             cnn_feature = Variable(cnn_feature).cuda()
             true_label = Variable(true_label).cuda()
@@ -137,18 +138,16 @@ def testing(data_loader, model, img_folder, output_folder):
         predict_label = np.array(predict_label.data)
         true_label = np.array(true_label.data)
         for j in range(predict_label.shape[0]):
-            correct += compute_correct(predict_label[j], true_label[j])
-            cnt += predict_label[j].shape[0]
+            correct += compute_correct(predict_label[j][:length], true_label[j][:length])
+            cnt += length
             preds_ = np.argmax(predict_label[j], 1)
             save_filename = os.path.join(output_folder, dirNames[dir_id]) + ".txt"
-            print(save_filename)
             try:
                 os.remove(save_filename)
             except OSError:
                 pass
             file = open(save_filename, "a+")
- 
-            for i in range(len(preds_)):
+            for i in range(length.data[j]):
                 file.write(str(preds_[i]))
                 file.write('\n')
 
@@ -162,19 +161,19 @@ def get_feature(data_loader, model, output_filename, img_folder, label_folder):
     print("get feature...")
     model.eval()
     features = np.zeros((1, frame_num, 2048))
+    length = []
     for i, data in enumerate(data_loader):
-        print(i)
-        img = data[0].type(torch.FloatTensor)
-        if torch.cuda.is_available():
-            img = Variable(img).cuda()
+        img = data[0]
         frame_length = img.shape[1]
-        group_size = int(frame_length / 10)
-        for j in range(10):
-            print("j" + str(j))
-            if j == 4:
+        group_size = int(frame_length / 30)
+        length.append(int(data[2]))
+        for j in range(30):
+            if j == 29:
                 input = img[:, group_size * j:]
             else:
                 input = img[:, group_size * j: group_size * (j+1)]
+            if torch.cuda.is_available():
+                input = Variable(input.type(torch.FloatTensor)).cuda()
             output = model.output_feature(input)
             output = output.data.cpu().numpy()
             if j == 0:
@@ -185,10 +184,8 @@ def get_feature(data_loader, model, output_filename, img_folder, label_folder):
             features = outputs
         else:
             features = np.concatenate((features, outputs), axis=0)
-    print("feature shape")
-    print(features.shape)
     all_labels = read_labels_p3(img_folder, label_folder, debug, frame_num, mode)
-    data = [(features[i], all_labels[i]) for i in range(len(features))]
+    data = [(features[i], all_labels[i], length[i]) for i in range(len(features))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     
     try:
@@ -196,22 +193,9 @@ def get_feature(data_loader, model, output_filename, img_folder, label_folder):
     except OSError:
         pass
     print("start produce feature .h5")
-    #with open(output_filename, "wb") as fp:   #Pickling
-    #    pickle.dump(features, fp)
     f = h5py.File(output_filename, 'w')
     f.create_dataset('features', data=features)
 
-    return dataloader
-
-def read_feature_from_file(filename, img_folder, label_folder):
-    f = h5py.File(filename, 'r')
-    features = f['features'][:]
-    
-    labels = read_labels_p3(img_folder, label_folder, debug, frame_num, mode)
-
-    print("feature size: " + str(features.shape))
-    data = [(features[i], labels[i]) for i in range(len(features))]
-    dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     return dataloader
 
 def count_parameters(model):
@@ -235,8 +219,10 @@ if __name__ == '__main__':
     if test == 0:
         if read_feature == 1:
             print("read feature...")
+            mode = "train"
             train_features = read_feature_from_file(train_feature_txt, 
                                                     train_img_folder, train_label_folder)
+            mode = "test"
             valid_features = read_feature_from_file(valid_feature_txt,
                                                     valid_img_folder, valid_label_folder)
  
@@ -269,7 +255,6 @@ if __name__ == '__main__':
             model_RNN = RNN_model(hidden_size).cuda()
         else:
             model_RNN = RNN_model(hidden_size).cpu()
-        model_RNN.load_state_dict(torch.load('./p2.pth'))
 
         model_RNN = training(train_features, valid_features, model_RNN,
                              "./p3_loss.jpg", valid_img_folder, output_label_folder)
@@ -280,7 +265,7 @@ if __name__ == '__main__':
         print("start testing...")
         mode = "test"
         valid_dataset = extractFrames_p3(valid_img_folder, valid_label_folder,
-                                       0, frame_num)
+                                       0, frame_num, mode)
         valid_dataloader = DataLoader(valid_dataset, batch_size=1, shuffle=False)
         print("load p1 model...")
         model_p1 = training_model()
@@ -295,6 +280,6 @@ if __name__ == '__main__':
             model_RNN = RNN_model(hidden_size).cuda()
         else:
             model_RNN = RNN_model(hidden_size).cpu()
-        model_RNN.load_state_dict(torch.load('./p2.pth'))
+        model_RNN.load_state_dict(torch.load('./p3.pth'))
         testing(valid_features, model_RNN, valid_img_folder, output_label_folder)
         calculate_acc_from_txt_p3(valid_label_folder, output_label_folder)

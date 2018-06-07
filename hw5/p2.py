@@ -18,7 +18,6 @@ import csv
 import skvideo.io
 import skimage.transform
 import collections
-import pickle
 from HW5_data.reader import readShortVideo
 from HW5_data.reader import getVideoList
 from p1 import training_model
@@ -186,8 +185,6 @@ def get_feature(data_loader, model, csvpath, output_filename):
     except OSError:
         pass
     print("start produce feature .h5")
-    #with open(output_filename, "wb") as fp:   #Pickling
-    #    pickle.dump(features, fp)
     f = h5py.File(output_filename, 'w')
     f.create_dataset('features', data=features)
 
