@@ -14,8 +14,8 @@ import csv
 import skvideo.io
 import skimage.transform
 import collections
-from HW5_data.reader import readShortVideo
-from HW5_data.reader import getVideoList
+#from HW5_data.reader import readShortVideo
+#from HW5_data.reader import getVideoList
 from p1 import training_model
 from util import *
 import matplotlib.pyplot as plt
@@ -283,5 +283,5 @@ if __name__ == '__main__':
             model_RNN = RNN_model(hidden_size).cpu()
         model_RNN.load_state_dict(torch.load('./p3.pth'))
         testing(valid_features, model_RNN, valid_img_folder, output_label_folder)
-        valid_label_folder = "./HW5_data/FullLengthVideos/labels/valid/"
-        calculate_acc_from_txt_p3(valid_label_folder, output_label_folder)
+        #valid_label_folder = "./HW5_data/FullLengthVideos/labels/valid/"
+        #calculate_acc_from_txt_p3(valid_label_folder, output_label_folder)
