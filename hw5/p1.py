@@ -173,7 +173,6 @@ def testing(data_loader, model, max_acc, save_filename):
         for i in range(len(all_predict)):
             file.write(str(all_predict[i]))
             file.write('\n')
-        file.write('\n')
         file.close()
 
     print("test score: " + str(float(correct) / float(cnt)))

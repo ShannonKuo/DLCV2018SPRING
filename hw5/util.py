@@ -59,8 +59,8 @@ def extractFrames(folder, csvpath, load, output_filename, debug = 0, frame_num=1
             os.remove(output_filename)
         except OSError:
             pass
-        f = h5py.File(output_filename, "w")
-        f.create_dataset("frames", data = frames)
+        #f = h5py.File(output_filename, "w")
+        #f.create_dataset("frames", data = frames)
     elif load == 1:
         print("read frames")
         f = h5py.File(output_filename, "r")
@@ -123,11 +123,19 @@ def extractFrames_p3(img_folder, label_folder, debug = 0, frame_num=64, mode="tr
             for j in range(videos[i].shape[0]):
                 videos_final[i, j] = videos[i][j]
     videos_final = np.moveaxis(videos_final, -1, 2)
-    all_labels = read_labels_p3(img_folder, label_folder, debug, frame_num, mode)
-    if debug == 1:
-        data = [(videos_final[i], all_labels[i], cnt_frames[i]) for i in range(debug_num)]
+    if mode == "train":
+        all_labels = read_labels_p3(img_folder, label_folder, debug, frame_num, mode)
+        if debug == 1:
+            data = [(videos_final[i], all_labels[i], cnt_frames[i]) for i in range(debug_num)]
+        else:
+            data = [(videos_final[i], all_labels[i], cnt_frames[i]) for i in range(videos_final.shape[0])]
     else:
-        data = [(videos_final[i], all_labels[i], cnt_frames[i]) for i in range(videos_final.shape[0])]
+        #all_labels = read_labels_p3(img_folder, label_folder, debug, frame_num, mode)
+        if debug == 1:
+            data = [(videos_final[i], cnt_frames[i]) for i in range(debug_num)]
+        else:
+            data = [(videos_final[i], cnt_frames[i]) for i in range(videos_final.shape[0])]
+
     return data
 
 def read_labels_p3(img_folder, label_folder, debug, frame_num, mode):

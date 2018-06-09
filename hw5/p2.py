@@ -157,7 +157,6 @@ def testing(data_loader, model, save_filename):
             file.write(str(preds_[i]))
             file.write('\n')
 
-    file.write('\n')
     file.close()
 
     print("test score: " + str(float(correct) / float(cnt)))

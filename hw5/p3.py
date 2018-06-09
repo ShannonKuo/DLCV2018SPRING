@@ -27,7 +27,7 @@ load_frame_data = 0
 read_valid_txt = 0
 batch_size = 1
 frame_num = 256
-test = 0
+test = 1
 mode = ""
 n_class = 11
 debug_num = 2
@@ -113,8 +113,6 @@ def training(data_loader, valid_dataloader, model, loss_filename,
     return model
 
 def testing(data_loader, model, img_folder, output_folder):
-    cnt = 0
-    correct = 0
     model.eval()
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -124,22 +122,22 @@ def testing(data_loader, model, img_folder, output_folder):
 
     for data in data_loader:
         cnn_feature = data[0].type(torch.FloatTensor)
-        true_label = data[1].type(torch.FloatTensor)
-        length = data[2]
-        true_label = true_label[:, 0: length, :]
+        #true_label = data[1].type(torch.FloatTensor)
+        length = data[1]
+        #true_label = true_label[:, 0: length, :]
         if torch.cuda.is_available():
             cnn_feature = Variable(cnn_feature).cuda()
-            true_label = Variable(true_label).cuda()
+            #true_label = Variable(true_label).cuda()
         else:
             cnn_feature = Variable(cnn_feature).cpu()
-            true_label = Variable(true_label).cpu()
+            #true_label = Variable(true_label).cpu()
         # ===================forward=====================
         predict_label, hidden = model(cnn_feature, None)
         predict_label = np.array(predict_label.data)
-        true_label = np.array(true_label.data)
+        #true_label = np.array(true_label.data)
         for j in range(predict_label.shape[0]):
-            correct += compute_correct(predict_label[j][:length], true_label[j][:length])
-            cnt += length
+            #correct += compute_correct(predict_label[j][:length], true_label[j][:length])
+            #cnt += length
             preds_ = np.argmax(predict_label[j], 1)
             save_filename = os.path.join(output_folder, dirNames[dir_id]) + ".txt"
             try:
@@ -150,12 +148,10 @@ def testing(data_loader, model, img_folder, output_folder):
             for i in range(length.data[j]):
                 file.write(str(preds_[i]))
                 file.write('\n')
-
-            file.write('\n')
             file.close()
             dir_id += 1
 
-    print("test score: " + str(float(correct) / float(cnt)))
+    #print("test score: " + str(float(correct) / float(cnt)))
 
 def get_feature(data_loader, model, output_filename, img_folder, label_folder):
     print("get feature...")
@@ -166,7 +162,7 @@ def get_feature(data_loader, model, output_filename, img_folder, label_folder):
         img = data[0]
         frame_length = img.shape[1]
         group_size = int(frame_length / 30)
-        length.append(int(data[2]))
+        length.append(int(data[1]))
         for j in range(30):
             if j == 29:
                 input = img[:, group_size * j:]
@@ -184,8 +180,11 @@ def get_feature(data_loader, model, output_filename, img_folder, label_folder):
             features = outputs
         else:
             features = np.concatenate((features, outputs), axis=0)
-    all_labels = read_labels_p3(img_folder, label_folder, debug, frame_num, mode)
-    data = [(features[i], all_labels[i], length[i]) for i in range(len(features))]
+    if mode == "train":
+        all_labels = read_labels_p3(img_folder, label_folder, debug, frame_num, mode)
+        data = [(features[i], all_labels[i], length[i]) for i in range(len(features))]
+    else:
+        data = [(features[i], length[i]) for i in range(len(features))]
     dataloader = DataLoader(data, batch_size=batch_size, shuffle=False)
     
     try:
@@ -208,13 +207,15 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(999)
 
-    train_img_folder = "./HW5_data/FullLengthVideos/videos/train/"
-    train_label_folder = "./HW5_data/FullLengthVideos/labels/train/"
-    valid_img_folder = "./HW5_data/FullLengthVideos/videos/valid/"
-    valid_label_folder = "./HW5_data/FullLengthVideos/labels/valid/"
-    train_feature_txt = "./train_feature_p3.h5"
-    valid_feature_txt = "./valid_feature_p3.h5"
-    output_label_folder = "./p3_output/"
+    #train_img_folder = "./HW5_data/FullLengthVideos/videos/train/"
+    #train_label_folder = "./HW5_data/FullLengthVideos/labels/train/"
+    valid_img_folder = sys.argv[1]#"./HW5_data/FullLengthVideos/videos/valid/"
+    valid_label_folder = "./error/"
+    #train_feature_txt = "./train_feature_p3.h5"
+    valid_feature_txt = "./error_p3.h5"
+    output_label_folder = sys.argv[2]#"./p3_output/"
+    if not os.path.exists(output_label_folder):
+        os.makedirs(output_label_folder)
 
     if test == 0:
         if read_feature == 1:
@@ -282,4 +283,5 @@ if __name__ == '__main__':
             model_RNN = RNN_model(hidden_size).cpu()
         model_RNN.load_state_dict(torch.load('./p3.pth'))
         testing(valid_features, model_RNN, valid_img_folder, output_label_folder)
+        valid_label_folder = "./HW5_data/FullLengthVideos/labels/valid/"
         calculate_acc_from_txt_p3(valid_label_folder, output_label_folder)
