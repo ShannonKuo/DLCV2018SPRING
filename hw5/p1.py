@@ -17,18 +17,18 @@ import csv
 import skvideo.io
 import skimage.transform
 import collections
-from HW5_data.reader import readShortVideo
-from HW5_data.reader import getVideoList
+#from HW5_data.reader import readShortVideo
+#from HW5_data.reader import getVideoList
 from util import *
 import matplotlib.pyplot as plt
 from scipy.signal import butter, lfilter, freqz
 
-debug = 1
+debug = 0
 load_frame_data_train = 0
 load_frame_data_valid = 0
 read_valid_txt = 0
-test = 0
-batch_size = 32
+test = 1
+batch_size = 1
 frame_num = 16
 learning_rate = 1e-3
 n_class = 11
@@ -53,10 +53,6 @@ class training_model(nn.Module):
         for i in range(x.shape[0]):
             input = x[i]
             feature = self.pretrained(input)
-            #avg_feature = np.mean(np.array(input.data), axis = 0)
-            #avg_feature = np.reshape(avg_feature, (1, 2048))
-            #avg_feature = torch.from_numpy(avg_feature)
-            #avg_feature = torch.squeeze(avg_feature, 1)
             if torch.cuda.is_available():
                 feature = Variable(feature).cuda()
             else:
@@ -87,7 +83,7 @@ class training_model(nn.Module):
             output[i] = z
         if torch.cuda.is_available():
             output = output.cuda()
-        return output, features 
+        return output 
                                        
 def training(data_loader, valid_dataloader, loss_filename):
     print("start training")            
@@ -143,10 +139,9 @@ def training(data_loader, valid_dataloader, loss_filename):
         plot_loss(all_loss, loss_filename)
     return model
 
-def testing(data_loader, model, max_acc):
+def testing(data_loader, model, max_acc, save_filename):
     cnt = 0
     correct = 0
-    save_filename = './p1_valid.txt'
     all_predict = []
 
     for data in data_loader:
@@ -160,7 +155,7 @@ def testing(data_loader, model, max_acc):
             img = Variable(img).cpu()
             true_label = Variable(true_label).cpu()
         # ===================forward=====================
-        predict_label, _ = model(img)
+        predict_label = model(img)
         predict_label = np.array(predict_label.data)
         true_label = np.array(true_label.data)
         correct += compute_correct(predict_label, true_label)
@@ -192,25 +187,29 @@ if __name__ == '__main__':
         torch.cuda.manual_seed_all(999)
 
         
-    train_folder = "./HW5_data/TrimmedVideos/video/train/"
-    valid_folder = "./HW5_data/TrimmedVideos/video/valid/"
-    train_csvpath = "./HW5_data/TrimmedVideos/label/gt_train.csv"
-    valid_csvpath = "./HW5_data/TrimmedVideos/label/gt_valid.csv"
-    p1_result = "./p1_valid.txt"
-    train_output_frame_file = "./frames_train.h5" 
-    valid_output_frame_file = "./frames_valid.h5" 
+    #train_folder = "./HW5_data/TrimmedVideos/video/train/"
+    valid_folder = sys.argv[1]#"./HW5_data/TrimmedVideos/video/valid/"
+    #train_csvpath = "./HW5_data/TrimmedVideos/label/gt_train.csv"
+    valid_csvpath = sys.argv[2]#"./HW5_data/TrimmedVideos/label/gt_valid.csv"
+    output_folder = sys.argv[3]
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    p1_result = os.path.join(output_folder + "/p1_valid.txt")
+    #train_output_frame_file = "./frames_train.h5" 
+    #valid_output_frame_file = "./frames_valid.h5" 
+    valid_output_frame_file = "./error.h5"
     if read_valid_txt == 1:
         calculate_acc_from_txt(valid_csvpath, p1_result)
     elif test == 1:
-        valid_dataset = extractFrames(valid_folder, valid_csvpath, 1, valid_output_frame_file, 0, frame_num)
+        valid_dataset = extractFrames(valid_folder, valid_csvpath, load_frame_data_valid, valid_output_frame_file, 0, frame_num)
         valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False)
         model = training_model()
         model.load_state_dict(torch.load("./p1.pth"))
         if torch.cuda.is_available():
             model = model.cuda()
 
-        testing(valid_dataloader, model, -1)
-        calculate_acc_from_txt(valid_csvpath, "./p1_valid.txt")
+        testing(valid_dataloader, model, -1, p1_result)
+        #calculate_acc_from_txt(valid_csvpath, p1_result)
     else:
         train_dataset = extractFrames(train_folder, train_csvpath, load_frame_data_train, train_output_frame_file, debug, frame_num)
         train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)

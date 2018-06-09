@@ -7,7 +7,7 @@ from torch import nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from torchvision.utils import save_image
+from sklearn.manifold import TSNE
 import torchvision.transforms.functional as F
 import scipy.misc
 import os
@@ -18,8 +18,8 @@ import csv
 import skvideo.io
 import skimage.transform
 import collections
-from HW5_data.reader import readShortVideo
-from HW5_data.reader import getVideoList
+#from HW5_data.reader import readShortVideo
+#from HW5_data.reader import getVideoList
 from p1 import training_model
 from util import *
 import matplotlib.pyplot as plt
@@ -39,7 +39,8 @@ dropout_last = 0.3
 lstm_layer = 1
 hidden_size = 128
 learning_rate = 0.0001
-hidden_feature = []
+#hidden_feature = []
+#cnn_features_tsne = []
 if debug == 1:
     num_epochs = 1
 else:
@@ -125,7 +126,9 @@ def testing(data_loader, model, save_filename):
     except OSError:
         pass
     file = open(save_filename, "a+")
-
+    hidden_feature = np.zeros((1, hidden_size))
+    cnn_features_tsne = np.zeros((1, 2048))
+    cnt = 0
     for data in data_loader:
         cnn_feature = data[0].type(torch.FloatTensor)
         true_label = data[1].type(torch.FloatTensor)
@@ -137,7 +140,14 @@ def testing(data_loader, model, save_filename):
             true_label = Variable(true_label).cpu()
         # ===================forward=====================
         predict_label, hidden = model(cnn_feature, None)
-        hidden_feature.append(hidden)
+        hidden = np.array(hidden[0][1].data)
+        cnn_feature = np.mean(np.array(cnn_feature.data), axis=1)
+        if cnt == 0:
+            hidden_feature = hidden
+            cnn_features_tsne = cnn_feature
+        else:
+            hidden_feature = np.concatenate((hidden_feature, hidden), axis=0)
+            cnn_features_tsne = np.concatenate((cnn_features_tsne, cnn_feature), axis=0)
         predict_label = np.array(predict_label.data)
         true_label = np.array(true_label.data)
         correct += compute_correct(predict_label, true_label)
@@ -151,6 +161,7 @@ def testing(data_loader, model, save_filename):
     file.close()
 
     print("test score: " + str(float(correct) / float(cnt)))
+    return cnn_features_tsne, hidden_feature
 
 def get_feature(data_loader, model, csvpath, output_filename):
     print("get feature...")
@@ -196,7 +207,6 @@ def read_feature_from_file(csvpath, filename):
     features = f['features'][:]
     video_list = getVideoList(csvpath)
     labels = video_list["Action_labels"]
-
     one_hot_labels = []
     for i in range(len(labels)):
         label = np.zeros(n_class)
@@ -210,7 +220,8 @@ def read_feature_from_file(csvpath, filename):
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def calculate_tsne(csvpath, features, rnn_model):
+def calculate_tsne(csvpath, rnn_model, cnn_features_tsne, hidden_feature):
+    print("calculate tsne...")
     color = []
     video_list = getVideoList(csvpath)
     for i, label in enumerate(video_list["Action_labels"]):
@@ -220,7 +231,7 @@ def calculate_tsne(csvpath, features, rnn_model):
     color = np.array(color)
     #CNN
     tsne = TSNE(n_components=2, init='pca', random_state=0)
-    Y = tsne.fit_transform(features)
+    Y = tsne.fit_transform(cnn_features_tsne)
     plt.scatter(Y[:, 0], Y[:, 1], s=5, c=color, cmap=plt.cm.Spectral)
     plt.title("t-SNE")
     plt.savefig('./cnn_tsne.jpg')
@@ -240,15 +251,18 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(999)
 
-    train_folder = "./HW5_data/TrimmedVideos/video/train/"
-    valid_folder = "./HW5_data/TrimmedVideos/video/valid/"
-    train_csvpath = "./HW5_data/TrimmedVideos/label/gt_train.csv"
-    valid_csvpath = "./HW5_data/TrimmedVideos/label/gt_valid.csv"
-    output_filename = "./p2_result.txt"
-    train_feature_txt = "./train_feature.h5"
-    valid_feature_txt = "./valid_feature.h5"
-    train_output_frame_file = "./frames_train.h5"
-    valid_output_frame_file = "./frames_valid.h5"
+    #train_folder = "./HW5_data/TrimmedVideos/video/train/"
+    valid_folder = sys.argv[1]#"./HW5_data/TrimmedVideos/video/valid/"
+    #train_csvpath = "./HW5_data/TrimmedVideos/label/gt_train.csv"
+    valid_csvpath = sys.argv[2]#"./HW5_data/TrimmedVideos/label/gt_valid.csv"
+    output_folder = sys.argv[3]
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+    output_filename = os.path.join(output_folder, "./p2_result.txt")
+    #train_feature_txt = "./train_feature.h5"
+    valid_feature_txt = "./error_feature.h5"
+    #train_output_frame_file = "./frames_train.h5"
+    valid_output_frame_file = "./error_frame.h5"
     if test == 0:
         if read_feature == 1:
             print("read feature...")
@@ -278,11 +292,10 @@ if __name__ == '__main__':
             model_RNN = RNN_model(hidden_size).cuda()
         else:
             model_RNN = RNN_model(hidden_size).cpu()
-        print(count_parameters(model_RNN))
         model_RNN = training(train_features, valid_features, model_RNN,
                              "./p2_loss.jpg", output_filename)
         testing(valid_features, model_RNN, output_filename)
-        calculate_acc_from_txt(valid_csvpath, output_filename)
+        #calculate_acc_from_txt(valid_csvpath, output_filename)
         
     else: 
         print("start testing...")
@@ -297,12 +310,12 @@ if __name__ == '__main__':
             model_p1 = model_p1.cuda()
         valid_features = get_feature(valid_dataloader, model_p1, valid_csvpath,
                                      valid_feature_txt)
-
+        
         if torch.cuda.is_available():
             model_RNN = RNN_model(hidden_size).cuda()
         else:
             model_RNN = RNN_model(hidden_size).cpu()
         model_RNN.load_state_dict(torch.load('./p2.pth'))
-        testing(valid_features, model_RNN, output_filename)
+        cnn_features_tsne, hidden_feature = testing(valid_features, model_RNN, output_filename)
         calculate_acc_from_txt(valid_csvpath, output_filename)
-        calculate_tsne(valid_csvpath, valid_features)
+        #calculate_tsne(valid_csvpath, model_RNN, cnn_features_tsne, hidden_feature)
